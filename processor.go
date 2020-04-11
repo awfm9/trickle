@@ -36,7 +36,12 @@ func NewProcessor(db Database, net Network, state State, sign Signer, verify Ver
 func (pro *Processor) Bootstrap(genesis *model.Block) error {
 
 	// check that we are at height zero
-	round := pro.state.Round()
+	round, err := pro.state.Round()
+	if err != nil {
+		return fmt.Errorf("could not get round: %w", err)
+	}
+
+	// check if round is zero
 	if round != 0 {
 		return fmt.Errorf("invalid round for bootstrap (%d)", round)
 	}
@@ -62,7 +67,7 @@ func (pro *Processor) Bootstrap(genesis *model.Block) error {
 	}
 
 	// store the genesis block
-	err := pro.db.Store(genesis)
+	err = pro.db.Store(genesis)
 	if err != nil {
 		return fmt.Errorf("could not store genesis: %w", err)
 	}
@@ -73,8 +78,13 @@ func (pro *Processor) Bootstrap(genesis *model.Block) error {
 		return fmt.Errorf("could not create genesis vote: %w", err)
 	}
 
-	// send the vote to the very first leader
-	collectorID := pro.state.Leader(genesis.Height + 1)
+	// get the collector of the genesis round
+	collectorID, err := pro.state.Leader(genesis.Height + 1)
+	if err != nil {
+		return fmt.Errorf("could not get collector: %w", err)
+	}
+
+	// send the vote to the genesis collector
 	err = pro.net.Transmit(vote, collectorID)
 	if err != nil {
 		return fmt.Errorf("could not transmit genesis vote: %w", err)
@@ -85,32 +95,39 @@ func (pro *Processor) Bootstrap(genesis *model.Block) error {
 
 func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
+	// get the current round
+	round, err := pro.state.Round()
+	if err != nil {
+		return fmt.Errorf("could not get current round: %w", err)
+	}
+
 	// check if the proposal is not outdated
-	round := pro.state.Round()
-	if proposal.Block.Height < round {
-		return fmt.Errorf("invalid proposal height (proposal: %d, round: %d)", proposal.Block.Height, round)
+	if proposal.Height < round {
+		return fmt.Errorf("outdated proposal height (proposal: %d, round: %d)", proposal.Height, round)
 	}
 
-	// check if the proposal is by correct leader
-	leaderID := pro.state.Leader(proposal.Block.Height)
-	if proposal.Block.SignerID != leaderID {
-		return fmt.Errorf("invalid proposal signer (proposal: %x, round: %x)", proposal.Block.SignerID, leaderID)
+	// get the proposer at the proposal height
+	proposerID, err := pro.state.Leader(proposal.Height)
+	if err != nil {
+		return fmt.Errorf("could not get proposer: %w", err)
 	}
 
-	// check if the proposed block is valid
+	// check if the proposal is signed by correct proposer
+	if proposal.SignerID != proposerID {
+		return fmt.Errorf("invalid proposal signer (proposal: %x, round: %x)", proposal.SignerID, proposerID)
+	}
+
+	// check if the proposed block has a valid signature & QC
 	valid, err := pro.verify.Proposal(proposal)
 	if err != nil {
 		return fmt.Errorf("could not verify proposal: %w", err)
 	}
 	if !valid {
-		return fmt.Errorf("invalid proposal signature (signer: %x)", proposal.Block.SignerID)
+		return fmt.Errorf("invalid proposal signature (signer: %x)", proposal.SignerID)
 	}
 
-	// check if we have the proposal parent
-	_, err = pro.db.Block(proposal.QC.BlockID)
-	if err != nil {
-		return fmt.Errorf("could not get proposal parent: %w", err)
-	}
+	// NOTE: we currently don't check if we have the parent, which allows us to
+	// skip ahead, even if we don't know the chain up to this point
 
 	// store the block in our database
 	err = pro.db.Store(proposal.Block)
@@ -124,19 +141,36 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	// therefore simply jump to the height after the QC/parent
 
 	// clear the buffer for the voted block
-	pro.buf.Clear(proposal.QC.BlockID)
+	err = pro.buf.Clear(proposal.QC.BlockID)
+	if err != nil {
+		return fmt.Errorf("could not clear buffer: %w", err)
+	}
 
 	// set our state to the new height
-	pro.state.Set(proposal.Block.Height)
+	err = pro.state.Set(proposal.Height)
+	if err != nil {
+		return fmt.Errorf("could not transition round: %w", err)
+	}
 
 	// TODO: check if the proposed block is a valid extension of the state
+
+	// get own ID
+	selfID, err := pro.sign.Self()
+	if err != nil {
+		return fmt.Errorf("could not get self: %w", err)
+	}
+
+	// get the collector for the proposal round
+	collectorID, err := pro.state.Leader(proposal.Height + 1)
+	if err != nil {
+		return fmt.Errorf("could not get collector: %w", err)
+	}
 
 	// if we are the next collector, we should collect the vote that is included
 	// implicitly in the block proposal by the proposal; in order to avoid
 	// creating extra code paths, we send it as message to ourselves
-	collectorID := pro.state.Leader(proposal.Block.Height + 1)
-	if collectorID == pro.sign.Self() {
-		err = pro.net.Transmit(proposal.Vote(), collectorID)
+	if collectorID == selfID {
+		err = pro.net.Transmit(proposal.Vote(), selfID)
 		if err != nil {
 			return fmt.Errorf("could not transmit proposer vote to self: %w", err)
 		}
@@ -144,7 +178,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
 	// if we are the current proposer, the vote was already implicitly included
 	// in the proposal, so we don't need to transmit it again
-	if proposal.SignerID == pro.sign.Self() {
+	if proposal.SignerID == selfID {
 		return nil
 	}
 
@@ -165,22 +199,32 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
 func (pro *Processor) OnVote(vote *message.Vote) error {
 
-	// check if we have the vote block
-	candidate, err := pro.db.Block(vote.BlockID)
+	// get current round
+	round, err := pro.state.Round()
 	if err != nil {
-		return fmt.Errorf("could not get vote candidate: %w", err)
+		return fmt.Errorf("could not get current round: %w", err)
 	}
 
-	// check if the vote is outdated
-	round := pro.state.Round()
-	if candidate.Height < round {
-		return fmt.Errorf("invalid candidate height (vote: %d, round: %d)", candidate.Height, round)
+	// check that the vote is not outdated
+	if vote.Height < round {
+		return fmt.Errorf("outdated vote height (vote: %d, round: %d)", vote.Height, round)
+	}
+
+	// get own ID
+	selfID, err := pro.sign.Self()
+	if err != nil {
+		return fmt.Errorf("could not get self: %w", err)
+	}
+
+	// get the collector for the vote
+	collectorID, err := pro.state.Leader(vote.Height + 1)
+	if err != nil {
+		return fmt.Errorf("could not get vote collector: %w", err)
 	}
 
 	// check if we are the collector for the round
-	collectorID := pro.state.Leader(candidate.Height + 1)
-	if collectorID != pro.sign.Self() {
-		return fmt.Errorf("invalid vote collector (collector: %x, self: %x)", collectorID, pro.sign.Self())
+	if collectorID != selfID {
+		return fmt.Errorf("invalid vote collector (collector: %x, self: %x)", collectorID, selfID)
 	}
 
 	// check if the vote has a valid signature
@@ -198,9 +242,19 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 		return fmt.Errorf("could not tally vote: %w)", err)
 	}
 
-	// check to see if we reached threshold
-	threshold := pro.state.Threshold()
-	votes := pro.buf.Votes(vote.BlockID)
+	// get the threshold (for all rounds currently)
+	threshold, err := pro.state.Threshold()
+	if err != nil {
+		return fmt.Errorf("could not get threshold: %w", err)
+	}
+
+	// get the votes for the given block
+	votes, err := pro.buf.Votes(vote.BlockID)
+	if err != nil {
+		return fmt.Errorf("could not get votes: %w", err)
+	}
+
+	// check if we have reached the threshold
 	if uint(len(votes)) <= threshold {
 		return nil
 	}
@@ -219,6 +273,9 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 		return fmt.Errorf("could not build payload: %w", err)
 	}
 
+	// NOTE: this can create a QC for a block have not even seen yet;
+	// however, with the majority voting for it, we should be able to rely on it
+
 	// create the QC for the new proposal
 	qc := model.QC{
 		BlockID:   vote.BlockID,
@@ -228,7 +285,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 
 	// create the block for the new proposal
 	block := model.Block{
-		Height:      candidate.Height + 1,
+		Height:      vote.Height + 1,
 		QC:          &qc,
 		PayloadHash: payloadHash,
 		Timestamp:   time.Now().UTC(),

@@ -15,8 +15,17 @@ type Buffer struct {
 }
 
 // Clear provides a mock function with given fields: blockID
-func (_m *Buffer) Clear(blockID model.Hash) {
-	_m.Called(blockID)
+func (_m *Buffer) Clear(blockID model.Hash) error {
+	ret := _m.Called(blockID)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(model.Hash) error); ok {
+		r0 = rf(blockID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // Tally provides a mock function with given fields: vote
@@ -34,7 +43,7 @@ func (_m *Buffer) Tally(vote *message.Vote) error {
 }
 
 // Votes provides a mock function with given fields: blockID
-func (_m *Buffer) Votes(blockID model.Hash) []*message.Vote {
+func (_m *Buffer) Votes(blockID model.Hash) ([]*message.Vote, error) {
 	ret := _m.Called(blockID)
 
 	var r0 []*message.Vote
@@ -46,5 +55,12 @@ func (_m *Buffer) Votes(blockID model.Hash) []*message.Vote {
 		}
 	}
 
-	return r0
+	var r1 error
+	if rf, ok := ret.Get(1).(func(model.Hash) error); ok {
+		r1 = rf(blockID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }

@@ -22,12 +22,13 @@ type Participant struct {
 	// participant data
 	selfID         model.Hash
 	participantIDs []model.Hash
-	queue          chan interface{}
+	proposals      chan *message.Proposal
+	votes          chan *message.Vote
 
 	// processor data
-	round  uint64
-	blocks map[model.Hash]*model.Block
-	votes  map[model.Hash]*message.Vote
+	round    uint64
+	database map[model.Hash]*model.Block
+	buffer   map[model.Hash](map[model.Hash]*message.Vote)
 
 	// component mocks
 	db     *mocks.Database
@@ -44,7 +45,6 @@ type Participant struct {
 	// test-related dependencies
 	log  zerolog.Logger
 	wg   sync.WaitGroup
-	last error
 	stop Condition
 }
 
@@ -53,11 +53,12 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 	p := Participant{
 		selfID:         selfID,
 		participantIDs: []model.Hash{selfID},
-		queue:          make(chan interface{}, 1024),
+		proposals:      make(chan *message.Proposal, 1024),
+		votes:          make(chan *message.Vote, 1024),
 
-		round:  0,
-		blocks: make(map[model.Hash]*model.Block),
-		votes:  make(map[model.Hash]*message.Vote),
+		round:    0,
+		database: make(map[model.Hash]*model.Block),
+		buffer:   make(map[model.Hash](map[model.Hash]*message.Vote)),
 
 		db:     &mocks.Database{},
 		net:    &mocks.Network{},
@@ -69,7 +70,6 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 
 		wg:   sync.WaitGroup{},
 		stop: stop,
-		last: nil,
 		log:  zerolog.New(os.Stderr).With().Hex("self", selfID[:]).Logger(),
 	}
 
@@ -77,21 +77,21 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 	p.db.On("Store", mock.Anything).Return(
 		func(block *model.Block) error {
 			blockID := block.ID()
-			_, exists := p.blocks[blockID]
+			_, exists := p.database[blockID]
 			if exists {
 				return fmt.Errorf("block already exists (%x)", blockID)
 			}
-			p.blocks[blockID] = block
+			p.database[blockID] = block
 			return nil
 		},
 	)
 	p.db.On("Block", mock.Anything).Return(
 		func(blockID model.Hash) *model.Block {
-			block := p.blocks[blockID]
+			block := p.database[blockID]
 			return block
 		},
 		func(blockID model.Hash) error {
-			_, exists := p.blocks[blockID]
+			_, exists := p.database[blockID]
 			if !exists {
 				return fmt.Errorf("unknown block (%x)", blockID)
 			}
@@ -103,7 +103,7 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 	p.net.On("Broadcast", mock.Anything).Return(
 		func(proposal *message.Proposal) error {
 			p.log.Info().Msg("broadcasting proposal")
-			p.queue <- proposal
+			p.proposals <- proposal
 			return nil
 		},
 	)
@@ -111,7 +111,7 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 		func(vote *message.Vote, recipientID model.Hash) error {
 			if recipientID == p.selfID {
 				p.log.Info().Msg("transmitting vote")
-				p.queue <- vote
+				p.votes <- vote
 			}
 			return nil
 		},
@@ -122,11 +122,15 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 		func() uint64 {
 			return p.round
 		},
+		nil,
 	)
-	p.state.On("Set", mock.Anything).Run(
-		func(args mock.Arguments) {
-			height := args.Get(0).(uint64)
+	p.state.On("Set", mock.Anything).Return(
+		func(height uint64) error {
+			if height <= p.round {
+				return fmt.Errorf("must set higher round (set: %d, round: %d)", height, p.round)
+			}
 			p.round = height
+			return nil
 		},
 	)
 	p.state.On("Leader", mock.Anything).Return(
@@ -135,12 +139,14 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 			leader := p.participantIDs[index]
 			return leader
 		},
+		nil,
 	)
 	p.state.On("Threshold", mock.Anything).Return(
 		func() uint {
 			threshold := uint(len(p.participantIDs) * 2 / 3)
 			return threshold
 		},
+		nil,
 	)
 
 	// program no-signature signer behaviour
@@ -148,6 +154,7 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 		func() model.Hash {
 			return p.selfID
 		},
+		nil,
 	)
 	p.sign.On("Proposal", mock.Anything).Return(
 		func(block *model.Block) *message.Proposal {
@@ -163,6 +170,7 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 	p.sign.On("Vote", mock.Anything).Return(
 		func(block *model.Block) *message.Vote {
 			vote := message.Vote{
+				Height:    block.Height,
 				BlockID:   block.ID(),
 				SignerID:  p.selfID,
 				Signature: nil,
@@ -179,28 +187,36 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 	// program single-block buffer behaviour
 	p.buf.On("Tally", mock.Anything).Return(
 		func(vote *message.Vote) error {
-			_, voted := p.votes[vote.SignerID]
-			if voted {
-				return fmt.Errorf("signer has already voted (%x)", vote.SignerID)
+			tally, tallied := p.buffer[vote.BlockID]
+			if !tallied {
+				tally = make(map[model.Hash]*message.Vote)
+				p.buffer[vote.BlockID] = tally
 			}
-			p.votes[vote.SignerID] = vote
+			_, voted := tally[vote.SignerID]
+			if voted {
+				return fmt.Errorf("double vote (block: %x, signer: %x)", vote.BlockID, vote.SignerID)
+			}
+			tally[vote.SignerID] = vote
 			return nil
 		},
 	)
 	p.buf.On("Votes", mock.Anything).Return(
 		func(blockID model.Hash) []*message.Vote {
 			votes := make([]*message.Vote, 0, len(p.votes))
-			for _, vote := range p.votes {
-				votes = append(votes, vote)
+			tally, tallied := p.buffer[blockID]
+			if tallied {
+				for _, vote := range tally {
+					votes = append(votes, vote)
+				}
 			}
 			return votes
 		},
+		nil,
 	)
-	p.buf.On("Clear", mock.Anything).Run(
-		func(mock.Arguments) {
-			for signerID := range p.votes {
-				delete(p.votes, signerID)
-			}
+	p.buf.On("Clear", mock.Anything).Return(
+		func(blockID model.Hash) error {
+			delete(p.buffer[blockID], blockID)
+			return nil
 		},
 	)
 
@@ -219,46 +235,50 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 
 	p.pro = consensus.NewProcessor(p.db, p.net, p.state, p.sign, p.verify, p.buf, p.build)
 
-	p.wg.Add(1)
-	go p.process()
-
 	return &p
 }
 
-func (p *Participant) process() {
-	defer p.wg.Done()
+func (p *Participant) Run() error {
 
-	// go through the queued messages
-	for msg := range p.queue {
+	for {
 
-		// process the message
-		switch m := msg.(type) {
-		case *message.Proposal:
-			p.log.Info().Msg("processing proposal")
-			p.last = p.pro.OnProposal(m)
-			if p.last != nil {
-				p.log.Error().Err(p.last).Msg("could not process proposal")
-			}
-		case *message.Vote:
-			p.log.Info().Msg("processing vote")
-			p.last = p.pro.OnVote(m)
-			if p.last != nil {
-				p.log.Error().Err(p.last).Msg("could not process vote")
-			}
-		}
+		// TODO: implement acceptable error filters once error types are
+		// returned by the processor
 
-		// check stop condition
+		// check stop condition first
 		if p.stop(p) {
-			break
+			return nil
+		}
+
+		// check for first priority messages (proposals)
+		select {
+		case proposal := <-p.proposals:
+			err := p.pro.OnProposal(proposal)
+			if err != nil {
+				p.log.Error().Err(err).Msg("could not process proposal")
+			} else {
+				p.log.Info().Msg("proposal processed")
+			}
+		default:
+		}
+
+		// check for second priority messages (votes)
+		select {
+		case proposal := <-p.proposals:
+			err := p.pro.OnProposal(proposal)
+			if err != nil {
+				p.log.Error().Err(err).Msg("could not process proposal")
+			} else {
+				p.log.Info().Msg("proposal processed")
+			}
+		case vote := <-p.votes:
+			p.log.Info().Msg("processing vote")
+			err := p.pro.OnVote(vote)
+			if err != nil {
+				p.log.Error().Err(err).Msg("could not process vote")
+			} else {
+				p.log.Info().Msg("vote processed")
+			}
 		}
 	}
-
-	// close channel and drain
-	close(p.queue)
-	for range p.queue {
-	}
-}
-
-func (p *Participant) wait() {
-	p.wg.Wait()
 }

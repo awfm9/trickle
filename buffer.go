@@ -7,6 +7,6 @@ import (
 
 type Buffer interface {
 	Tally(vote *message.Vote) error
-	Votes(blockID model.Hash) []*message.Vote
-	Clear(blockID model.Hash)
+	Votes(blockID model.Hash) ([]*message.Vote, error)
+	Clear(blockID model.Hash) error
 }

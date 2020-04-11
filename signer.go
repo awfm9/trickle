@@ -6,7 +6,7 @@ import (
 )
 
 type Signer interface {
-	Self() model.Hash
+	Self() (model.Hash, error)
 	Proposal(block *model.Block) (*message.Proposal, error)
 	Vote(block *model.Block) (*message.Vote, error)
 }

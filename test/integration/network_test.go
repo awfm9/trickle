@@ -3,10 +3,11 @@ package integration
 import (
 	"fmt"
 
+	"github.com/stretchr/testify/mock"
+
 	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/mocks"
 	"github.com/alvalor/consensus/model"
-	"github.com/stretchr/testify/mock"
 )
 
 func Network(participants []*Participant) {
@@ -30,7 +31,7 @@ func Network(participants []*Participant) {
 			func(proposal *message.Proposal) error {
 				sender.log.Info().Msg("broadcasting proposal")
 				for _, receiver := range participants {
-					receiver.queue <- proposal
+					receiver.proposals <- proposal
 				}
 				return nil
 			},
@@ -42,7 +43,7 @@ func Network(participants []*Participant) {
 					return fmt.Errorf("invalid recipient (%x)", recipientID)
 				}
 				sender.log.Info().Hex("receiver", recipientID[:]).Msg("transmitting vote")
-				receiver.queue <- vote
+				receiver.votes <- vote
 				return nil
 			},
 		)

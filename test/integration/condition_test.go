@@ -13,14 +13,8 @@ func Or(conditions ...Condition) Condition {
 	}
 }
 
-func AtRound(height uint64) Condition {
+func AfterRound(height uint64) Condition {
 	return func(p *Participant) bool {
-		return p.state.Round() >= height
-	}
-}
-
-func Error() Condition {
-	return func(p *Participant) bool {
-		return p.last != nil
+		return p.round > height
 	}
 }
