@@ -3,8 +3,10 @@ package integration
 import (
 	"crypto/rand"
 	"fmt"
+	"os"
+	"sync"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/sha3"
@@ -38,24 +40,37 @@ type Participant struct {
 
 	// participant processor
 	pro *consensus.Processor
+
+	// test-related dependencies
+	log  zerolog.Logger
+	wg   sync.WaitGroup
+	last error
+	stop Condition
 }
 
-func NewParticipant(t require.TestingT, selfID model.Hash) *Participant {
+func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Participant {
 
 	p := Participant{
 		selfID:         selfID,
 		participantIDs: []model.Hash{selfID},
 		queue:          make(chan interface{}, 1024),
-		round:          0,
-		blocks:         make(map[model.Hash]*model.Block),
-		votes:          make(map[model.Hash]*message.Vote),
-		db:             &mocks.Database{},
-		net:            &mocks.Network{},
-		state:          &mocks.State{},
-		sign:           &mocks.Signer{},
-		verify:         &mocks.Verifier{},
-		buf:            &mocks.Buffer{},
-		build:          &mocks.Builder{},
+
+		round:  0,
+		blocks: make(map[model.Hash]*model.Block),
+		votes:  make(map[model.Hash]*message.Vote),
+
+		db:     &mocks.Database{},
+		net:    &mocks.Network{},
+		state:  &mocks.State{},
+		sign:   &mocks.Signer{},
+		verify: &mocks.Verifier{},
+		buf:    &mocks.Buffer{},
+		build:  &mocks.Builder{},
+
+		wg:   sync.WaitGroup{},
+		stop: stop,
+		last: nil,
+		log:  zerolog.New(os.Stderr).With().Hex("self", selfID[:]).Logger(),
 	}
 
 	// program map database behaviour
@@ -87,6 +102,7 @@ func NewParticipant(t require.TestingT, selfID model.Hash) *Participant {
 	// program loopback network mock behaviour
 	p.net.On("Broadcast", mock.Anything).Return(
 		func(proposal *message.Proposal) error {
+			p.log.Info().Msg("broadcasting proposal")
 			p.queue <- proposal
 			return nil
 		},
@@ -94,6 +110,7 @@ func NewParticipant(t require.TestingT, selfID model.Hash) *Participant {
 	p.net.On("Transmit", mock.Anything, mock.Anything).Return(
 		func(vote *message.Vote, recipientID model.Hash) error {
 			if recipientID == p.selfID {
+				p.log.Info().Msg("transmitting vote")
 				p.queue <- vote
 			}
 			return nil
@@ -106,8 +123,9 @@ func NewParticipant(t require.TestingT, selfID model.Hash) *Participant {
 			return p.round
 		},
 	)
-	p.state.On("Set", mock.Anything).Return(
-		func(height uint64) {
+	p.state.On("Set", mock.Anything).Run(
+		func(args mock.Arguments) {
+			height := args.Get(0).(uint64)
 			p.round = height
 		},
 	)
@@ -178,8 +196,8 @@ func NewParticipant(t require.TestingT, selfID model.Hash) *Participant {
 			return votes
 		},
 	)
-	p.buf.On("Clear", mock.Anything).Return(
-		func(blockID model.Hash) {
+	p.buf.On("Clear", mock.Anything).Run(
+		func(mock.Arguments) {
 			for signerID := range p.votes {
 				delete(p.votes, signerID)
 			}
@@ -201,12 +219,14 @@ func NewParticipant(t require.TestingT, selfID model.Hash) *Participant {
 
 	p.pro = consensus.NewProcessor(p.db, p.net, p.state, p.sign, p.verify, p.buf, p.build)
 
-	go p.process(t)
+	p.wg.Add(1)
+	go p.process()
 
 	return &p
 }
 
-func (p *Participant) process(t require.TestingT) {
+func (p *Participant) process() {
+	defer p.wg.Done()
 
 	// go through the queued messages
 	for msg := range p.queue {
@@ -214,13 +234,31 @@ func (p *Participant) process(t require.TestingT) {
 		// process the message
 		switch m := msg.(type) {
 		case *message.Proposal:
-			err := p.pro.OnProposal(m)
-			assert.NoError(t, err, "proposal should not error")
+			p.log.Info().Msg("processing proposal")
+			p.last = p.pro.OnProposal(m)
+			if p.last != nil {
+				p.log.Error().Err(p.last).Msg("could not process proposal")
+			}
 		case *message.Vote:
-			err := p.pro.OnVote(m)
-			assert.NoError(t, err, "vote should not error")
-		default:
-			panic(fmt.Sprintf("invalid message type (%T)", msg))
+			p.log.Info().Msg("processing vote")
+			p.last = p.pro.OnVote(m)
+			if p.last != nil {
+				p.log.Error().Err(p.last).Msg("could not process vote")
+			}
+		}
+
+		// check stop condition
+		if p.stop(p) {
+			break
 		}
 	}
+
+	// close channel and drain
+	close(p.queue)
+	for range p.queue {
+	}
+}
+
+func (p *Participant) wait() {
+	p.wg.Wait()
 }

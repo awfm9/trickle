@@ -85,7 +85,7 @@ func (pro *Processor) Bootstrap(genesis *model.Block) error {
 
 func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
-	// check if the proposal is for the current round
+	// check if the proposal is not outdated
 	round := pro.state.Round()
 	if proposal.Block.Height < round {
 		return fmt.Errorf("invalid proposal height (proposal: %d, round: %d)", proposal.Block.Height, round)
@@ -106,16 +106,16 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 		return fmt.Errorf("invalid proposal signature (signer: %x)", proposal.Block.SignerID)
 	}
 
-	// store the block in our database
-	err = pro.db.Store(proposal.Block)
-	if err != nil {
-		return fmt.Errorf("could not store block: %w", err)
-	}
-
 	// check if we have the proposal parent
 	_, err = pro.db.Block(proposal.QC.BlockID)
 	if err != nil {
 		return fmt.Errorf("could not get proposal parent: %w", err)
+	}
+
+	// store the block in our database
+	err = pro.db.Store(proposal.Block)
+	if err != nil {
+		return fmt.Errorf("could not store block: %w", err)
 	}
 
 	// NOTE: we never check if the QC is on a block that is a valid extension of
@@ -129,26 +129,37 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	// set our state to the new height
 	pro.state.Set(proposal.Block.Height)
 
-	// check if we were the proposer
-	if proposal.Block.SignerID == pro.sign.Self() {
-		return nil
-	}
-
 	// TODO: check if the proposed block is a valid extension of the state
 
-	// NOTE: if we are the next leader, the network will short-circuit the vote
-	// here, and the `OnVote` call will trigger us sending the proposal if we
-	// can already assemble enough signatures for the previous one
-	// vote on the new proposal
+	// NOTE: if we are the collector, we send the proposer's vote to our self,
+	// which avoids adding an extra code path for that edge case
 
-	// create the vote for the proposed block
+	// NOTE: if we are also the proposer, we bail early, so we don't send the
+	// same vote to our self twice
+
+	// check if we are the next collector
+	collectorID := pro.state.Leader(proposal.Block.Height + 1)
+	if collectorID == pro.sign.Self() {
+
+		// if we are, send the proposer vote to the loopback
+		err = pro.net.Transmit(proposal.Vote(), collectorID)
+		if err != nil {
+			return fmt.Errorf("could not transmit proposer vote to self: %w", err)
+		}
+
+		// if we are also proposer, quit now so we don't vote twice
+		if proposal.SignerID == pro.sign.Self() {
+			return nil
+		}
+	}
+
+	// create own vote for the proposed block
 	vote, err := pro.sign.Vote(proposal.Block)
 	if err != nil {
 		return fmt.Errorf("could not create vote: %w", err)
 	}
 
 	// send the vote for the proposed block to the next collector
-	collectorID := pro.state.Leader(proposal.Block.Height + 1)
 	err = pro.net.Transmit(vote, collectorID)
 	if err != nil {
 		return fmt.Errorf("could not transmit vote: %w", err)
