@@ -5,6 +5,6 @@ import (
 )
 
 type Verifier interface {
-	Proposal(proposal *message.Proposal) (bool, error)
-	Vote(vote *message.Vote) (bool, error)
+	Proposal(proposal *message.Proposal) error
+	Vote(vote *message.Vote) error
 }

@@ -8,5 +8,5 @@ type Vote struct {
 	Height    uint64
 	BlockID   model.Hash
 	SignerID  model.Hash
-	Signature []byte
+	Signature model.Signature
 }

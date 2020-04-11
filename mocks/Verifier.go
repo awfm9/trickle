@@ -13,43 +13,29 @@ type Verifier struct {
 }
 
 // Proposal provides a mock function with given fields: proposal
-func (_m *Verifier) Proposal(proposal *message.Proposal) (bool, error) {
+func (_m *Verifier) Proposal(proposal *message.Proposal) error {
 	ret := _m.Called(proposal)
 
-	var r0 bool
-	if rf, ok := ret.Get(0).(func(*message.Proposal) bool); ok {
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*message.Proposal) error); ok {
 		r0 = rf(proposal)
 	} else {
-		r0 = ret.Get(0).(bool)
+		r0 = ret.Error(0)
 	}
 
-	var r1 error
-	if rf, ok := ret.Get(1).(func(*message.Proposal) error); ok {
-		r1 = rf(proposal)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
+	return r0
 }
 
 // Vote provides a mock function with given fields: vote
-func (_m *Verifier) Vote(vote *message.Vote) (bool, error) {
+func (_m *Verifier) Vote(vote *message.Vote) error {
 	ret := _m.Called(vote)
 
-	var r0 bool
-	if rf, ok := ret.Get(0).(func(*message.Vote) bool); ok {
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*message.Vote) error); ok {
 		r0 = rf(vote)
 	} else {
-		r0 = ret.Get(0).(bool)
+		r0 = ret.Error(0)
 	}
 
-	var r1 error
-	if rf, ok := ret.Get(1).(func(*message.Vote) error); ok {
-		r1 = rf(vote)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
+	return r0
 }

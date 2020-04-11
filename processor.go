@@ -96,34 +96,31 @@ func (pro *Processor) Bootstrap(genesis *model.Block) error {
 func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
 	// get the current round
-	round, err := pro.state.Round()
+	cutoff, err := pro.state.Round()
 	if err != nil {
-		return fmt.Errorf("could not get current round: %w", err)
+		return fmt.Errorf("could not get cutoff: %w", err)
 	}
 
 	// check if the proposal is not outdated
-	if proposal.Height < round {
-		return fmt.Errorf("outdated proposal height (proposal: %d, round: %d)", proposal.Height, round)
+	if proposal.Height < cutoff {
+		return ObsoleteProposal{Proposal: proposal, Cutoff: cutoff}
 	}
 
 	// get the proposer at the proposal height
-	proposerID, err := pro.state.Leader(proposal.Height)
+	leaderID, err := pro.state.Leader(proposal.Height)
 	if err != nil {
 		return fmt.Errorf("could not get proposer: %w", err)
 	}
 
 	// check if the proposal is signed by correct proposer
-	if proposal.SignerID != proposerID {
-		return fmt.Errorf("invalid proposal signer (proposal: %x, round: %x)", proposal.SignerID, proposerID)
+	if proposal.SignerID != leaderID {
+		return InvalidProposer{Proposal: proposal, Leader: leaderID}
 	}
 
 	// check if the proposed block has a valid signature & QC
-	valid, err := pro.verify.Proposal(proposal)
+	err = pro.verify.Proposal(proposal)
 	if err != nil {
 		return fmt.Errorf("could not verify proposal: %w", err)
-	}
-	if !valid {
-		return fmt.Errorf("invalid proposal signature (signer: %x)", proposal.SignerID)
 	}
 
 	// NOTE: we currently don't check if we have the parent, which allows us to
@@ -200,14 +197,14 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 func (pro *Processor) OnVote(vote *message.Vote) error {
 
 	// get current round
-	round, err := pro.state.Round()
+	cutoff, err := pro.state.Round()
 	if err != nil {
-		return fmt.Errorf("could not get current round: %w", err)
+		return fmt.Errorf("could not get cutoff: %w", err)
 	}
 
 	// check that the vote is not outdated
-	if vote.Height < round {
-		return fmt.Errorf("outdated vote height (vote: %d, round: %d)", vote.Height, round)
+	if vote.Height < cutoff {
+		return ObsoleteVote{Vote: vote, Cutoff: cutoff}
 	}
 
 	// get own ID
@@ -224,16 +221,13 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 
 	// check if we are the collector for the round
 	if collectorID != selfID {
-		return fmt.Errorf("invalid vote collector (collector: %x, self: %x)", collectorID, selfID)
+		return InvalidCollector{Vote: vote, Collector: collectorID, Receiver: selfID}
 	}
 
 	// check if the vote has a valid signature
-	valid, err := pro.verify.Vote(vote)
+	err = pro.verify.Vote(vote)
 	if err != nil {
 		return fmt.Errorf("could not verify vote signature: %w", err)
-	}
-	if !valid {
-		return fmt.Errorf("invalid vote signature (signer: %x)", vote.SignerID)
 	}
 
 	// check if we already have a vote by this voter

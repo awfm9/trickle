@@ -6,7 +6,7 @@ import (
 
 type Proposal struct {
 	*model.Block
-	Signature []byte
+	Signature model.Signature
 }
 
 func (p *Proposal) Vote() *Vote {

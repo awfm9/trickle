@@ -181,8 +181,8 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 	)
 
 	// program always-valid verifier behaviour
-	p.verify.On("Proposal", mock.Anything).Return(true, nil)
-	p.verify.On("Vote", mock.Anything).Return(true, nil)
+	p.verify.On("Proposal", mock.Anything).Return(nil)
+	p.verify.On("Vote", mock.Anything).Return(nil)
 
 	// program single-block buffer behaviour
 	p.buf.On("Tally", mock.Anything).Return(
