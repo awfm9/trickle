@@ -14,10 +14,25 @@ type Processor struct {
 	db     Database
 	net    Network
 	state  State
-	signer Signer
+	sign   Signer
 	verify Verifier
-	votes  map[model.Hash]*message.Vote
 	self   model.Hash
+	votes  map[model.Hash]*message.Vote
+}
+
+func NewProcessor(db Database, net Network, state State, sign Signer, verify Verifier, self model.Hash) *Processor {
+
+	pro := Processor{
+		db:     db,
+		net:    net,
+		state:  state,
+		sign:   sign,
+		verify: verify,
+		self:   self,
+		votes:  make(map[model.Hash]*message.Vote),
+	}
+
+	return &pro
 }
 
 func (pro *Processor) OnVote(vote *message.Vote) error {
@@ -93,13 +108,13 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	}
 
 	// create the new proposal
-	proposal, err := pro.signer.Propose(&candidate)
+	proposal, err := pro.sign.Proposal(&candidate)
 	if err != nil {
 		return fmt.Errorf("could not create proposal: %w", err)
 	}
 
 	// broadcast the proposal to the network
-	// NOTE: the network module should short-circuit one copy of this message to
+	// NOTE: the network module should short-circuit one copy of this messae to
 	// ourselves, which will lead to the state transition to the next height
 	err = pro.net.Broadcast(proposal)
 	if err != nil {
@@ -165,7 +180,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	// vote on the new proposal
 
 	// create the vote for the proposed block
-	vote, err := pro.signer.Vote(proposal.Block)
+	vote, err := pro.sign.Vote(proposal.Block)
 	if err != nil {
 		return fmt.Errorf("could not create vote: %w", err)
 	}

@@ -6,6 +6,6 @@ import (
 )
 
 type Signer interface {
+	Proposal(block *model.Block) (*message.Proposal, error)
 	Vote(block *model.Block) (*message.Vote, error)
-	Propose(block *model.Block) (*message.Proposal, error)
 }
