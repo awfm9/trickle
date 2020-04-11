@@ -85,13 +85,13 @@ func NewParticipant(t require.TestingT, selfID model.Hash) *Participant {
 	)
 
 	// program loopback network mock behaviour
-	p.db.On("Broadcast", mock.Anything).Return(
+	p.net.On("Broadcast", mock.Anything).Return(
 		func(proposal *message.Proposal) error {
 			p.queue <- proposal
 			return nil
 		},
 	)
-	p.db.On("Transmit", mock.Anything, mock.Anything).Return(
+	p.net.On("Transmit", mock.Anything, mock.Anything).Return(
 		func(vote *message.Vote, recipientID model.Hash) error {
 			if recipientID == p.selfID {
 				p.queue <- vote

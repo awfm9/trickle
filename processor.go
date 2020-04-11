@@ -33,6 +33,56 @@ func NewProcessor(db Database, net Network, state State, sign Signer, verify Ver
 	return &pro
 }
 
+func (pro *Processor) Bootstrap(genesis *model.Block) error {
+
+	// check that we are at height zero
+	round := pro.state.Round()
+	if round != 0 {
+		return fmt.Errorf("invalid round for bootstrap (%d)", round)
+	}
+
+	// check that genesis block is at height zero
+	if genesis.Height != 0 {
+		return fmt.Errorf("invalid genesis height (%d)", genesis.Height)
+	}
+
+	// check that genesis has no QC
+	if genesis.QC != nil {
+		return fmt.Errorf("genesis has parent (%x)", genesis.QC.BlockID)
+	}
+
+	// check that genesis has no payload
+	if genesis.PayloadHash != model.ZeroHash {
+		return fmt.Errorf("genesis has payload (%x)", genesis.PayloadHash)
+	}
+
+	// check that genesis block has no proposer
+	if genesis.SignerID != model.ZeroHash {
+		return fmt.Errorf("genesis has signer (%x)", genesis.SignerID)
+	}
+
+	// store the genesis block
+	err := pro.db.Store(genesis)
+	if err != nil {
+		return fmt.Errorf("could not store genesis: %w", err)
+	}
+
+	// create the vote for the proposed block
+	vote, err := pro.sign.Vote(genesis)
+	if err != nil {
+		return fmt.Errorf("could not create genesis vote: %w", err)
+	}
+
+	// send the vote to the very first leader
+	collectorID := pro.state.Leader(genesis.Height + 1)
+	err = pro.net.Transmit(vote, collectorID)
+	if err != nil {
+		return fmt.Errorf("could not transmit genesis vote: %w", err)
+	}
+
+	return nil
+}
+
 func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
 	// check if the proposal is for the current round
