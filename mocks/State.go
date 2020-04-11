@@ -12,20 +12,6 @@ type State struct {
 	mock.Mock
 }
 
-// Height provides a mock function with given fields:
-func (_m *State) Height() uint64 {
-	ret := _m.Called()
-
-	var r0 uint64
-	if rf, ok := ret.Get(0).(func() uint64); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Get(0).(uint64)
-	}
-
-	return r0
-}
-
 // Leader provides a mock function with given fields: height
 func (_m *State) Leader(height uint64) model.Hash {
 	ret := _m.Called(height)
@@ -42,17 +28,15 @@ func (_m *State) Leader(height uint64) model.Hash {
 	return r0
 }
 
-// Participants provides a mock function with given fields:
-func (_m *State) Participants() []model.Hash {
+// Round provides a mock function with given fields:
+func (_m *State) Round() uint64 {
 	ret := _m.Called()
 
-	var r0 []model.Hash
-	if rf, ok := ret.Get(0).(func() []model.Hash); ok {
+	var r0 uint64
+	if rf, ok := ret.Get(0).(func() uint64); ok {
 		r0 = rf()
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]model.Hash)
-		}
+		r0 = ret.Get(0).(uint64)
 	}
 
 	return r0
@@ -61,4 +45,18 @@ func (_m *State) Participants() []model.Hash {
 // Set provides a mock function with given fields: height
 func (_m *State) Set(height uint64) {
 	_m.Called(height)
+}
+
+// Threshold provides a mock function with given fields: height
+func (_m *State) Threshold(height uint64) uint {
+	ret := _m.Called(height)
+
+	var r0 uint
+	if rf, ok := ret.Get(0).(func(uint64) uint); ok {
+		r0 = rf(height)
+	} else {
+		r0 = ret.Get(0).(uint)
+	}
+
+	return r0
 }

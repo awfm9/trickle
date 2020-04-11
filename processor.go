@@ -1,13 +1,11 @@
 package consensus
 
 import (
-	"crypto/rand"
 	"fmt"
 	"time"
 
 	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/model"
-	"golang.org/x/crypto/sha3"
 )
 
 type Processor struct {
@@ -16,11 +14,11 @@ type Processor struct {
 	state  State
 	sign   Signer
 	verify Verifier
-	selfID model.Hash
-	votes  map[model.Hash]*message.Vote
+	buf    Buffer
+	build  Builder
 }
 
-func NewProcessor(db Database, net Network, state State, sign Signer, verify Verifier, selfID model.Hash) *Processor {
+func NewProcessor(db Database, net Network, state State, sign Signer, verify Verifier, buf Buffer, build Builder) *Processor {
 
 	pro := Processor{
 		db:     db,
@@ -28,8 +26,8 @@ func NewProcessor(db Database, net Network, state State, sign Signer, verify Ver
 		state:  state,
 		sign:   sign,
 		verify: verify,
-		selfID: selfID,
-		votes:  make(map[model.Hash]*message.Vote),
+		buf:    buf,
+		build:  build,
 	}
 
 	return &pro
@@ -38,13 +36,13 @@ func NewProcessor(db Database, net Network, state State, sign Signer, verify Ver
 func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
 	// check if the proposal is for the current round
-	height := pro.state.Height()
-	if proposal.Block.Height < height {
-		return fmt.Errorf("invalid proposal height (proposal: %d, round: %d)", proposal.Block.Height, height)
+	round := pro.state.Round()
+	if proposal.Block.Height < round {
+		return fmt.Errorf("invalid proposal height (proposal: %d, round: %d)", proposal.Block.Height, round)
 	}
 
 	// check if the proposal is by correct leader
-	leaderID := pro.state.Leader(height)
+	leaderID := pro.state.Leader(round)
 	if proposal.Block.SignerID != leaderID {
 		return fmt.Errorf("invalid proposal signer (proposal: %x, round: %x)", proposal.Block.SignerID, leaderID)
 	}
@@ -69,17 +67,14 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	// we have a majority of validators voting for an invalid block - we can
 	// therefore simply jump to the height after the QC/parent
 
-	// empty the map of votes; we iterate as most of the time we are not the
-	// collector, so it is empty anyway, no need to throw away
-	for signerID := range pro.votes {
-		delete(pro.votes, signerID)
-	}
+	// clear the buffer for the voted block
+	pro.buf.Clear(proposal.QC.BlockID)
 
 	// set our state to the new height
 	pro.state.Set(proposal.Block.Height)
 
 	// check if we were the proposer
-	if proposal.Block.SignerID == pro.selfID {
+	if proposal.Block.SignerID == pro.sign.Self() {
 		return nil
 	}
 
@@ -109,27 +104,21 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 func (pro *Processor) OnVote(vote *message.Vote) error {
 
 	// check if we have the vote block
-	block, err := pro.db.Block(vote.BlockID)
+	candidate, err := pro.db.Block(vote.BlockID)
 	if err != nil {
-		return fmt.Errorf("could not get vote block: %w", err)
+		return fmt.Errorf("could not get vote candidate: %w", err)
 	}
 
 	// check if the vote is outdated
-	height := pro.state.Height()
-	if block.Height < height {
-		return fmt.Errorf("invalid vote height (vote: %d, round: %d)", block.Height, height)
+	round := pro.state.Round()
+	if candidate.Height < round {
+		return fmt.Errorf("invalid candidate height (vote: %d, round: %d)", candidate.Height, round)
 	}
 
 	// check if we are the collector for the round
-	collectorID := pro.state.Leader(block.Height + 1)
-	if collectorID != pro.selfID {
-		return fmt.Errorf("invalid vote collector (collector: %x, self: %x)", collectorID, pro.selfID)
-	}
-
-	// check if we already have a vote by this voter
-	_, voted := pro.votes[vote.SignerID]
-	if voted {
-		return fmt.Errorf("signer has already voted (signer: %x)", vote.SignerID)
+	collectorID := pro.state.Leader(candidate.Height + 1)
+	if collectorID != pro.sign.Self() {
+		return fmt.Errorf("invalid vote collector (collector: %x, self: %x)", collectorID, pro.sign.Self())
 	}
 
 	// check if the vote has a valid signature
@@ -141,26 +130,32 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 		return fmt.Errorf("invalid vote signature (signer: %x)", vote.SignerID)
 	}
 
-	// add the vote to our buffer
-	pro.votes[vote.SignerID] = vote
+	// check if we already have a vote by this voter
+	err = pro.buf.Tally(vote)
+	if err != nil {
+		return fmt.Errorf("could not tally vote: %w)", err)
+	}
 
 	// check to see if we reached threshold
-	threshold := len(pro.state.Participants()) / 3 * 2
-	if len(pro.votes) <= threshold {
+	threshold := pro.state.Threshold(candidate.Height)
+	votes := pro.buf.Votes(vote.BlockID)
+	if uint(len(votes)) <= threshold {
 		return nil
 	}
 
 	// collect vote signers and signatures
 	var signature []byte
-	signerIDs := make([]model.Hash, 0, len(pro.votes))
-	for signerID, vote := range pro.votes {
-		signerIDs = append(signerIDs, signerID)
+	signerIDs := make([]model.Hash, 0, len(votes))
+	for _, vote := range votes {
+		signerIDs = append(signerIDs, vote.SignerID)
 		signature = append(signature, vote.Signature...)
 	}
 
 	// get a random payload
-	payload := make([]byte, 1024)
-	_, _ = rand.Read(payload)
+	payloadHash, err := pro.build.PayloadHash()
+	if err != nil {
+		return fmt.Errorf("could not build payload: %w", err)
+	}
 
 	// create the QC for the new proposal
 	qc := model.QC{
@@ -170,16 +165,15 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	}
 
 	// create the block for the new proposal
-	candidate := model.Block{
-		Height:      block.Height + 1,
+	block := model.Block{
+		Height:      candidate.Height + 1,
 		QC:          &qc,
-		PayloadHash: sha3.Sum256(payload),
+		PayloadHash: payloadHash,
 		Timestamp:   time.Now().UTC(),
-		SignerID:    pro.selfID,
 	}
 
 	// create the new proposal
-	proposal, err := pro.sign.Proposal(&candidate)
+	proposal, err := pro.sign.Proposal(&block)
 	if err != nil {
 		return fmt.Errorf("could not create proposal: %w", err)
 	}

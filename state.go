@@ -5,8 +5,8 @@ import (
 )
 
 type State interface {
-	Height() uint64
+	Round() uint64
 	Set(height uint64)
 	Leader(height uint64) model.Hash
-	Participants() []model.Hash
+	Threshold(height uint64) uint
 }

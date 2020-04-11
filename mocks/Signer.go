@@ -37,6 +37,22 @@ func (_m *Signer) Proposal(block *model.Block) (*message.Proposal, error) {
 	return r0, r1
 }
 
+// Self provides a mock function with given fields:
+func (_m *Signer) Self() model.Hash {
+	ret := _m.Called()
+
+	var r0 model.Hash
+	if rf, ok := ret.Get(0).(func() model.Hash); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(model.Hash)
+		}
+	}
+
+	return r0
+}
+
 // Vote provides a mock function with given fields: block
 func (_m *Signer) Vote(block *model.Block) (*message.Vote, error) {
 	ret := _m.Called(block)
