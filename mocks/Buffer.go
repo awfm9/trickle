@@ -14,13 +14,13 @@ type Buffer struct {
 	mock.Mock
 }
 
-// Clear provides a mock function with given fields: blockID
-func (_m *Buffer) Clear(blockID model.Hash) error {
-	ret := _m.Called(blockID)
+// Clear provides a mock function with given fields: height
+func (_m *Buffer) Clear(height uint64) error {
+	ret := _m.Called(height)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(model.Hash) error); ok {
-		r0 = rf(blockID)
+	if rf, ok := ret.Get(0).(func(uint64) error); ok {
+		r0 = rf(height)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -28,18 +28,46 @@ func (_m *Buffer) Clear(blockID model.Hash) error {
 	return r0
 }
 
-// Tally provides a mock function with given fields: vote
-func (_m *Buffer) Tally(vote *message.Vote) error {
-	ret := _m.Called(vote)
+// Proposal provides a mock function with given fields: proposal
+func (_m *Buffer) Proposal(proposal *message.Proposal) (bool, error) {
+	ret := _m.Called(proposal)
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(*message.Vote) error); ok {
-		r0 = rf(vote)
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(*message.Proposal) bool); ok {
+		r0 = rf(proposal)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(bool)
 	}
 
-	return r0
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*message.Proposal) error); ok {
+		r1 = rf(proposal)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Vote provides a mock function with given fields: vote
+func (_m *Buffer) Vote(vote *message.Vote) (bool, error) {
+	ret := _m.Called(vote)
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(*message.Vote) bool); ok {
+		r0 = rf(vote)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*message.Vote) error); ok {
+		r1 = rf(vote)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // Votes provides a mock function with given fields: blockID

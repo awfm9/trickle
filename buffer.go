@@ -6,7 +6,8 @@ import (
 )
 
 type Buffer interface {
-	Tally(vote *message.Vote) error
+	Proposal(proposal *message.Proposal) (bool, error)
+	Vote(vote *message.Vote) (bool, error)
 	Votes(blockID model.Hash) ([]*message.Vote, error)
-	Clear(blockID model.Hash) error
+	Clear(height uint64) error
 }

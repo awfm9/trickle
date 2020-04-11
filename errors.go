@@ -50,15 +50,16 @@ type InvalidSigner struct {
 }
 
 func (is InvalidSigner) Error() string {
-	return fmt.Sprintf("invalid signer (entity: %s, signer: %x)", is.Signer)
+	return fmt.Sprintf("invalid signer (entity: %s, signer: %x)", is.Entity, is.Signer)
 }
 
 type InvalidSignature struct {
+	Entity string
 	Signer model.Hash
 }
 
 func (is InvalidSignature) Error() string {
-	return fmt.Sprintf("invalid signature (entity: %s, signer: %x)", is.Signer)
+	return fmt.Sprintf("invalid signature (entity: %s, signer: %x)", is.Entity, is.Signer)
 }
 
 type DoubleProposal struct {

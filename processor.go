@@ -9,25 +9,23 @@ import (
 )
 
 type Processor struct {
-	db     Database
 	net    Network
 	state  State
+	build  Builder
 	sign   Signer
 	verify Verifier
-	buf    Buffer
-	build  Builder
+	buffer Buffer
 }
 
-func NewProcessor(db Database, net Network, state State, sign Signer, verify Verifier, buf Buffer, build Builder) *Processor {
+func NewProcessor(state State, net Network, build Builder, sign Signer, verify Verifier, buffer Buffer) *Processor {
 
 	pro := Processor{
-		db:     db,
-		net:    net,
 		state:  state,
+		net:    net,
+		build:  build,
 		sign:   sign,
 		verify: verify,
-		buf:    buf,
-		build:  build,
+		buffer: buffer,
 	}
 
 	return &pro
@@ -64,12 +62,6 @@ func (pro *Processor) Bootstrap(genesis *model.Block) error {
 	// check that genesis block has no proposer
 	if genesis.SignerID != model.ZeroHash {
 		return fmt.Errorf("genesis has signer (%x)", genesis.SignerID)
-	}
-
-	// store the genesis block
-	err = pro.db.Store(genesis)
-	if err != nil {
-		return fmt.Errorf("could not store genesis: %w", err)
 	}
 
 	// create the vote for the proposed block
@@ -123,30 +115,33 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 		return fmt.Errorf("could not verify proposal: %w", err)
 	}
 
+	// check if we already had a proposal by this proposer
+	fresh, err := pro.buffer.Proposal(proposal)
+	if err != nil {
+		return fmt.Errorf("could not buffer proposal: %w", err)
+	}
+	if !fresh {
+		return nil
+	}
+
 	// NOTE: we currently don't check if we have the parent, which allows us to
 	// skip ahead, even if we don't know the chain up to this point
-
-	// store the block in our database
-	err = pro.db.Store(proposal.Block)
-	if err != nil {
-		return fmt.Errorf("could not store block: %w", err)
-	}
 
 	// NOTE: we never check if the QC is on a block that is a valid extension of
 	// the state; if it wasn't, the system would already be compromised, because
 	// we have a majority of validators voting for an invalid block - we can
 	// therefore simply jump to the height after the QC/parent
 
-	// clear the buffer for the voted block
-	err = pro.buf.Clear(proposal.QC.BlockID)
-	if err != nil {
-		return fmt.Errorf("could not clear buffer: %w", err)
-	}
-
 	// set our state to the new height
 	err = pro.state.Set(proposal.Height)
 	if err != nil {
 		return fmt.Errorf("could not transition round: %w", err)
+	}
+
+	// clear the buffer for the voted block
+	err = pro.buffer.Clear(proposal.Height - 1)
+	if err != nil {
+		return fmt.Errorf("could not clear buffer: %w", err)
 	}
 
 	// TODO: check if the proposed block is a valid extension of the state
@@ -231,9 +226,12 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	}
 
 	// check if we already have a vote by this voter
-	err = pro.buf.Tally(vote)
+	fresh, err := pro.buffer.Vote(vote)
 	if err != nil {
 		return fmt.Errorf("could not tally vote: %w)", err)
+	}
+	if !fresh {
+		return nil
 	}
 
 	// get the threshold (for all rounds currently)
@@ -243,7 +241,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	}
 
 	// get the votes for the given block
-	votes, err := pro.buf.Votes(vote.BlockID)
+	votes, err := pro.buffer.Votes(vote.BlockID)
 	if err != nil {
 		return fmt.Errorf("could not get votes: %w", err)
 	}

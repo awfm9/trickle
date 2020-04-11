@@ -26,18 +26,18 @@ type Participant struct {
 	votes          chan *message.Vote
 
 	// processor data
-	round    uint64
-	database map[model.Hash]*model.Block
-	buffer   map[model.Hash](map[model.Hash]*message.Vote)
+	round      uint64
+	blockDB    map[model.Hash]*model.Block
+	proposalDB map[model.Hash]*message.Proposal
+	voteDB     map[model.Hash](map[model.Hash]*message.Vote)
 
 	// component mocks
-	db     *mocks.Database
-	net    *mocks.Network
 	state  *mocks.State
+	net    *mocks.Network
+	build  *mocks.Builder
 	sign   *mocks.Signer
 	verify *mocks.Verifier
-	buf    *mocks.Buffer
-	build  *mocks.Builder
+	buffer *mocks.Buffer
 
 	// participant processor
 	pro *consensus.Processor
@@ -56,66 +56,22 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 		proposals:      make(chan *message.Proposal, 1024),
 		votes:          make(chan *message.Vote, 1024),
 
-		round:    0,
-		database: make(map[model.Hash]*model.Block),
-		buffer:   make(map[model.Hash](map[model.Hash]*message.Vote)),
+		round:      0,
+		blockDB:    make(map[model.Hash]*model.Block),
+		proposalDB: make(map[model.Hash]*message.Proposal),
+		voteDB:     make(map[model.Hash](map[model.Hash]*message.Vote)),
 
-		db:     &mocks.Database{},
 		net:    &mocks.Network{},
 		state:  &mocks.State{},
 		sign:   &mocks.Signer{},
 		verify: &mocks.Verifier{},
-		buf:    &mocks.Buffer{},
+		buffer: &mocks.Buffer{},
 		build:  &mocks.Builder{},
 
 		wg:   sync.WaitGroup{},
 		stop: stop,
 		log:  zerolog.New(os.Stderr).With().Hex("self", selfID[:]).Logger(),
 	}
-
-	// program map database behaviour
-	p.db.On("Store", mock.Anything).Return(
-		func(block *model.Block) error {
-			blockID := block.ID()
-			_, exists := p.database[blockID]
-			if exists {
-				return fmt.Errorf("block already exists (%x)", blockID)
-			}
-			p.database[blockID] = block
-			return nil
-		},
-	)
-	p.db.On("Block", mock.Anything).Return(
-		func(blockID model.Hash) *model.Block {
-			block := p.database[blockID]
-			return block
-		},
-		func(blockID model.Hash) error {
-			_, exists := p.database[blockID]
-			if !exists {
-				return fmt.Errorf("unknown block (%x)", blockID)
-			}
-			return nil
-		},
-	)
-
-	// program loopback network mock behaviour
-	p.net.On("Broadcast", mock.Anything).Return(
-		func(proposal *message.Proposal) error {
-			p.log.Info().Msg("broadcasting proposal")
-			p.proposals <- proposal
-			return nil
-		},
-	)
-	p.net.On("Transmit", mock.Anything, mock.Anything).Return(
-		func(vote *message.Vote, recipientID model.Hash) error {
-			if recipientID == p.selfID {
-				p.log.Info().Msg("transmitting vote")
-				p.votes <- vote
-			}
-			return nil
-		},
-	)
 
 	// program round-robin state behaviour
 	p.state.On("Round").Return(
@@ -145,6 +101,37 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 		func() uint {
 			threshold := uint(len(p.participantIDs) * 2 / 3)
 			return threshold
+		},
+		nil,
+	)
+
+	// program loopback network mock behaviour
+	p.net.On("Broadcast", mock.Anything).Return(
+		func(proposal *message.Proposal) error {
+			p.log.Info().Msg("broadcasting proposal")
+			p.proposals <- proposal
+			return nil
+		},
+	)
+	p.net.On("Transmit", mock.Anything, mock.Anything).Return(
+		func(vote *message.Vote, recipientID model.Hash) error {
+			if recipientID == p.selfID {
+				p.log.Info().Msg("transmitting vote")
+				p.votes <- vote
+			}
+			return nil
+		},
+	)
+
+	// program random builder behaviour
+	p.build.On("PayloadHash").Return(
+		func() model.Hash {
+			seed := make([]byte, 128)
+			n, err := rand.Read(seed)
+			require.NoError(t, err, "could not read seed")
+			require.Equal(t, len(seed), n, "could not read full seed")
+			hash := sha3.Sum256(seed)
+			return model.Hash(hash)
 		},
 		nil,
 	)
@@ -185,25 +172,53 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 	p.verify.On("Vote", mock.Anything).Return(nil)
 
 	// program single-block buffer behaviour
-	p.buf.On("Tally", mock.Anything).Return(
-		func(vote *message.Vote) error {
-			tally, tallied := p.buffer[vote.BlockID]
-			if !tallied {
-				tally = make(map[model.Hash]*message.Vote)
-				p.buffer[vote.BlockID] = tally
+	p.buffer.On("Proposal", mock.Anything).Return(
+		func(proposal *message.Proposal) bool {
+			_, hasProposal := p.proposalDB[proposal.ID()]
+			return !hasProposal
+		},
+		func(proposal *message.Proposal) error {
+			for _, duplicate := range p.proposalDB {
+				if proposal.Height == duplicate.Height && proposal.SignerID == duplicate.SignerID {
+					return consensus.DoubleProposal{First: duplicate, Second: proposal}
+				}
 			}
-			_, voted := tally[vote.SignerID]
-			if voted {
-				return fmt.Errorf("double vote (block: %x, signer: %x)", vote.BlockID, vote.SignerID)
-			}
-			tally[vote.SignerID] = vote
 			return nil
 		},
 	)
-	p.buf.On("Votes", mock.Anything).Return(
+	p.buffer.On("Vote", mock.Anything).Return(
+		func(vote *message.Vote) bool {
+			tally, hasBlock := p.voteDB[vote.BlockID]
+			if !hasBlock {
+				tally = make(map[model.Hash]*message.Vote)
+				p.voteDB[vote.BlockID] = tally
+			}
+			_, hasVote := tally[vote.SignerID]
+			if hasVote {
+				return false
+			}
+			tally[vote.SignerID] = vote
+			return true
+		},
+		func(vote *message.Vote) error {
+			tally, hasBlock := p.voteDB[vote.BlockID]
+			if !hasBlock {
+				return nil
+			}
+			duplicate, hasVote := tally[vote.SignerID]
+			if !hasVote {
+				return nil
+			}
+			if vote.BlockID == duplicate.BlockID {
+				return nil
+			}
+			return consensus.DoubleVote{First: duplicate, Second: vote}
+		},
+	)
+	p.buffer.On("Votes", mock.Anything).Return(
 		func(blockID model.Hash) []*message.Vote {
 			votes := make([]*message.Vote, 0, len(p.votes))
-			tally, tallied := p.buffer[blockID]
+			tally, tallied := p.voteDB[blockID]
 			if tallied {
 				for _, vote := range tally {
 					votes = append(votes, vote)
@@ -213,27 +228,27 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 		},
 		nil,
 	)
-	p.buf.On("Clear", mock.Anything).Return(
-		func(blockID model.Hash) error {
-			delete(p.buffer[blockID], blockID)
+	p.buffer.On("Clear", mock.Anything).Return(
+		func(height uint64) error {
+			for blockID, proposal := range p.proposalDB {
+				if proposal.Height <= height {
+					delete(p.voteDB, blockID)
+					delete(p.blockDB, blockID)
+				}
+			}
+			for blockID, tally := range p.voteDB {
+				for _, vote := range tally {
+					if vote.Height <= height {
+						delete(p.voteDB, blockID)
+					}
+					break
+				}
+			}
 			return nil
 		},
 	)
 
-	// program random builder behaviour
-	p.build.On("PayloadHash").Return(
-		func() model.Hash {
-			seed := make([]byte, 128)
-			n, err := rand.Read(seed)
-			require.NoError(t, err, "could not read seed")
-			require.Equal(t, len(seed), n, "could not read full seed")
-			hash := sha3.Sum256(seed)
-			return model.Hash(hash)
-		},
-		nil,
-	)
-
-	p.pro = consensus.NewProcessor(p.db, p.net, p.state, p.sign, p.verify, p.buf, p.build)
+	p.pro = consensus.NewProcessor(p.state, p.net, p.build, p.sign, p.verify, p.buffer)
 
 	return &p
 }
