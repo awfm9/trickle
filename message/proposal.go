@@ -1,9 +1,10 @@
-package event
+package message
 
 import (
 	"github.com/alvalor/consensus/model"
 )
 
 type Proposal struct {
-	Block *model.Block
+	*model.Block
+	Signature []byte
 }

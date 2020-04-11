@@ -1,11 +1,11 @@
 package consensus
 
 import (
-	"github.com/alvalor/consensus/event"
+	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/model"
 )
 
 type Network interface {
-	Broadcast(proposal *event.Proposal) error
-	Transmit(vote *event.Vote, recipient model.Hash) error
+	Broadcast(proposal *message.Proposal) error
+	Transmit(vote *message.Vote, recipient model.Hash) error
 }
