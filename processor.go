@@ -92,7 +92,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	}
 
 	// check if the proposal is by correct leader
-	leaderID := pro.state.Leader(round)
+	leaderID := pro.state.Leader(proposal.Block.Height)
 	if proposal.Block.SignerID != leaderID {
 		return fmt.Errorf("invalid proposal signer (proposal: %x, round: %x)", proposal.Block.SignerID, leaderID)
 	}
@@ -131,26 +131,21 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
 	// TODO: check if the proposed block is a valid extension of the state
 
-	// NOTE: if we are the collector, we send the proposer's vote to our self,
-	// which avoids adding an extra code path for that edge case
-
-	// NOTE: if we are also the proposer, we bail early, so we don't send the
-	// same vote to our self twice
-
-	// check if we are the next collector
+	// if we are the next collector, we should collect the vote that is included
+	// implicitly in the block proposal by the proposal; in order to avoid
+	// creating extra code paths, we send it as message to ourselves
 	collectorID := pro.state.Leader(proposal.Block.Height + 1)
 	if collectorID == pro.sign.Self() {
-
-		// if we are, send the proposer vote to the loopback
 		err = pro.net.Transmit(proposal.Vote(), collectorID)
 		if err != nil {
 			return fmt.Errorf("could not transmit proposer vote to self: %w", err)
 		}
+	}
 
-		// if we are also proposer, quit now so we don't vote twice
-		if proposal.SignerID == pro.sign.Self() {
-			return nil
-		}
+	// if we are the current proposer, the vote was already implicitly included
+	// in the proposal, so we don't need to transmit it again
+	if proposal.SignerID == pro.sign.Self() {
+		return nil
 	}
 
 	// create own vote for the proposed block

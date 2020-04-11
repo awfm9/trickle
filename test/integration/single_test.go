@@ -7,12 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSingleNode(t *testing.T) {
+func TestSingleSet(t *testing.T) {
 
 	// create the participant to stop at 10000 blocks
-	p := NewParticipant(t, fixture.Hash(t),
-		Or(AtRound(10000), Error()),
-	)
+	p := NewParticipant(t, fixture.Hash(t), Or(AtRound(1000), Error()))
 
 	genesis := fixture.Genesis(t)
 	err := p.pro.Bootstrap(genesis)
