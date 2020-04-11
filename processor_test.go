@@ -92,6 +92,7 @@ func (ps *ProcessorSuite) TestProcessorOnProposal() {
 	ps.verify.On("Proposal", proposal).Return(true, nil)
 
 	// program the database
+	ps.db.On("Store", block).Return(nil)
 	ps.db.On("Block", block.QC.BlockID).Return(parent, nil)
 
 	// program the signer
@@ -130,7 +131,7 @@ func (ps *ProcessorSuite) TestProcessorOnVote() {
 	// program the state
 	ps.state.On("Round").Return(candidate.Height)
 	ps.state.On("Leader", candidate.Height+1).Return(selfID)
-	ps.state.On("Threshold", candidate.Height).Return(uint(0))
+	ps.state.On("Threshold").Return(uint(0))
 
 	// program the verifier
 	ps.verify.On("Vote", vote).Return(true, nil)

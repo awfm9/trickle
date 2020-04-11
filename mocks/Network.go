@@ -28,13 +28,13 @@ func (_m *Network) Broadcast(proposal *message.Proposal) error {
 	return r0
 }
 
-// Transmit provides a mock function with given fields: vote, recipient
-func (_m *Network) Transmit(vote *message.Vote, recipient model.Hash) error {
-	ret := _m.Called(vote, recipient)
+// Transmit provides a mock function with given fields: vote, recipientID
+func (_m *Network) Transmit(vote *message.Vote, recipientID model.Hash) error {
+	ret := _m.Called(vote, recipientID)
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(*message.Vote, model.Hash) error); ok {
-		r0 = rf(vote, recipient)
+		r0 = rf(vote, recipientID)
 	} else {
 		r0 = ret.Error(0)
 	}

@@ -47,13 +47,13 @@ func (_m *State) Set(height uint64) {
 	_m.Called(height)
 }
 
-// Threshold provides a mock function with given fields: height
-func (_m *State) Threshold(height uint64) uint {
-	ret := _m.Called(height)
+// Threshold provides a mock function with given fields:
+func (_m *State) Threshold() uint {
+	ret := _m.Called()
 
 	var r0 uint
-	if rf, ok := ret.Get(0).(func(uint64) uint); ok {
-		r0 = rf(height)
+	if rf, ok := ret.Get(0).(func() uint); ok {
+		r0 = rf()
 	} else {
 		r0 = ret.Get(0).(uint)
 	}

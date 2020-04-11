@@ -8,5 +8,5 @@ type State interface {
 	Round() uint64
 	Set(height uint64)
 	Leader(height uint64) model.Hash
-	Threshold(height uint64) uint
+	Threshold() uint
 }

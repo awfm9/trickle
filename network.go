@@ -7,5 +7,5 @@ import (
 
 type Network interface {
 	Broadcast(proposal *message.Proposal) error
-	Transmit(vote *message.Vote, recipient model.Hash) error
+	Transmit(vote *message.Vote, recipientID model.Hash) error
 }

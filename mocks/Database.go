@@ -34,3 +34,17 @@ func (_m *Database) Block(blockID model.Hash) (*model.Block, error) {
 
 	return r0, r1
 }
+
+// Store provides a mock function with given fields: block
+func (_m *Database) Store(block *model.Block) error {
+	ret := _m.Called(block)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*model.Block) error); ok {
+		r0 = rf(block)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}

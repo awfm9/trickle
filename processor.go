@@ -56,6 +56,12 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 		return fmt.Errorf("invalid proposal signature (signer: %x)", proposal.Block.SignerID)
 	}
 
+	// store the block in our database
+	err = pro.db.Store(proposal.Block)
+	if err != nil {
+		return fmt.Errorf("could not store block: %w", err)
+	}
+
 	// check if we have the proposal parent
 	_, err = pro.db.Block(proposal.QC.BlockID)
 	if err != nil {
@@ -137,7 +143,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	}
 
 	// check to see if we reached threshold
-	threshold := pro.state.Threshold(candidate.Height)
+	threshold := pro.state.Threshold()
 	votes := pro.buf.Votes(vote.BlockID)
 	if uint(len(votes)) <= threshold {
 		return nil
