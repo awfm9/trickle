@@ -8,7 +8,7 @@ type Condition func(*Participant) error
 
 func AfterRound(height uint64, err error) Condition {
 	return func(p *Participant) error {
-		if p.round > height {
+		if p.round >= height {
 			return err
 		}
 		return nil

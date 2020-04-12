@@ -25,16 +25,17 @@ type Participant struct {
 	selfID         model.Hash
 	participantIDs []model.Hash
 	genesisID      model.Hash
-	round          uint64
 	stop           []Condition
 	ignore         []error
 
 	// state data
-	vertexDB   map[model.Hash]*model.Vertex
-	proposalDB map[model.Hash]*message.Proposal
-	voteCache  map[model.Hash](map[model.Hash]*message.Vote)
-	proposalQ  chan *message.Proposal
-	voteQ      chan *message.Vote
+	round         uint64
+	confirmations map[model.Hash]uint
+	vertexDB      map[model.Hash]*model.Vertex
+	proposalDB    map[model.Hash]*message.Proposal
+	voteCache     map[model.Hash](map[model.Hash]*message.Vote)
+	proposalQ     chan *message.Proposal
+	voteQ         chan *message.Vote
 
 	// real dependencies
 	pcache *cache.ProposalCache
@@ -42,6 +43,7 @@ type Participant struct {
 
 	// dependency mocks
 	net    *mocks.Network
+	graph  *mocks.Graph
 	state  *mocks.State
 	build  *mocks.Builder
 	sign   *mocks.Signer
@@ -64,20 +66,22 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		selfID:         selfID,
 		participantIDs: []model.Hash{selfID},
 		genesisID:      model.ZeroHash,
-		round:          0,
 		stop:           []Condition{AfterRound(10, errFinished)},
 		ignore:         []error{consensus.ObsoleteProposal{}, consensus.ObsoleteVote{}},
 
-		vertexDB:   make(map[model.Hash]*model.Vertex),
-		proposalDB: make(map[model.Hash]*message.Proposal),
-		voteCache:  make(map[model.Hash](map[model.Hash]*message.Vote)),
-		proposalQ:  make(chan *message.Proposal, 1024),
-		voteQ:      make(chan *message.Vote, 1024),
+		round:         0,
+		confirmations: make(map[model.Hash]uint),
+		vertexDB:      make(map[model.Hash]*model.Vertex),
+		proposalDB:    make(map[model.Hash]*message.Proposal),
+		voteCache:     make(map[model.Hash](map[model.Hash]*message.Vote)),
+		proposalQ:     make(chan *message.Proposal, 1024),
+		voteQ:         make(chan *message.Vote, 1024),
 
 		pcache: cache.NewProposalCache(),
 		vcache: cache.NewVoteCache(),
 
 		net:    &mocks.Network{},
+		graph:  &mocks.Graph{},
 		state:  &mocks.State{},
 		build:  &mocks.Builder{},
 		sign:   &mocks.Signer{},
@@ -88,40 +92,6 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	for _, option := range options {
 		option(&p)
 	}
-
-	// program round-robin state behaviour
-	p.state.On("Round").Return(
-		func() uint64 {
-			return p.round
-		},
-		nil,
-	)
-	p.state.On("Set", mock.Anything).Return(
-		func(height uint64) error {
-			if height <= p.round {
-				return fmt.Errorf("must set higher round (set: %d, round: %d)", height, p.round)
-			}
-			p.round = height
-			return nil
-		},
-	)
-	p.state.On("Leader", mock.Anything).Return(
-		func(height uint64) model.Hash {
-			src := rand.NewSource(int64(height))
-			r := rand.New(src)
-			index := r.Intn(len(p.participantIDs))
-			leader := p.participantIDs[index]
-			return leader
-		},
-		nil,
-	)
-	p.state.On("Threshold", mock.Anything).Return(
-		func() uint {
-			threshold := uint(len(p.participantIDs) * 2 / 3)
-			return threshold
-		},
-		nil,
-	)
 
 	// program loopback network mock behaviour
 	p.net.On("Broadcast", mock.Anything).Return(
@@ -153,6 +123,58 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 				Msg("vote looped")
 			return nil
 		},
+	)
+
+	// program simple graph behaviour
+	p.graph.On("Round").Return(
+		func() uint64 {
+			return p.round
+		},
+		nil,
+	)
+	p.graph.On("Extend", mock.Anything).Return(
+		func(vertex *model.Vertex) error {
+			pending := p.round - 2
+			if pending > p.round {
+				pending = 0
+			}
+			if vertex.Height < pending {
+				return fmt.Errorf("vertex in finalized state")
+			}
+			p.vertexDB[vertex.ID()] = vertex
+			return nil
+		},
+	)
+	p.graph.On("Confirm", mock.Anything).Return(
+		func(vertexID model.Hash) error {
+			vertex, hasVertex := p.vertexDB[vertexID]
+			if !hasVertex {
+				return fmt.Errorf("could not find vertex (%x)", vertexID)
+			}
+			if vertex.Height >= p.round {
+				p.round = vertex.Height + 1
+			}
+			return nil
+		},
+	)
+
+	// program round-robin state behaviour
+	p.state.On("Leader", mock.Anything).Return(
+		func(height uint64) model.Hash {
+			src := rand.NewSource(int64(height))
+			r := rand.New(src)
+			index := r.Intn(len(p.participantIDs))
+			leader := p.participantIDs[index]
+			return leader
+		},
+		nil,
+	)
+	p.state.On("Threshold", mock.Anything).Return(
+		func() uint {
+			threshold := uint(len(p.participantIDs) * 2 / 3)
+			return threshold
+		},
+		nil,
 	)
 
 	// program random builder behaviour
@@ -199,7 +221,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	p.verify.On("Vote", mock.Anything).Return(nil)
 
 	// inject dependencies into processor
-	p.pro = consensus.NewProcessor(p.state, p.net, p.build, p.sign, p.verify, p.pcache, p.vcache)
+	p.pro = consensus.NewProcessor(p.net, p.graph, p.state, p.build, p.sign, p.verify, p.pcache, p.vcache)
 
 	return &p
 }

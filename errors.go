@@ -9,20 +9,20 @@ import (
 
 type ObsoleteProposal struct {
 	Proposal *message.Proposal
-	Cutoff   uint64
+	Round    uint64
 }
 
 func (op ObsoleteProposal) Error() string {
-	return fmt.Sprintf("obsolete proposal (height: %d, cutoff: %d)", op.Proposal.Height, op.Cutoff)
+	return fmt.Sprintf("obsolete proposal (height: %d, round: %d)", op.Proposal.Height, op.Round)
 }
 
 type ObsoleteVote struct {
-	Vote   *message.Vote
-	Cutoff uint64
+	Vote  *message.Vote
+	Round uint64
 }
 
 func (ov ObsoleteVote) Error() string {
-	return fmt.Sprintf("obsolete vote (height: %d, cutoff: %d)", ov.Vote.Height, ov.Cutoff)
+	return fmt.Sprintf("obsolete vote (height: %d, round: %d)", ov.Vote.Height, ov.Round)
 }
 
 type InvalidProposer struct {

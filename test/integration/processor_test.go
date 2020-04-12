@@ -21,7 +21,6 @@ func TestSingularSet(t *testing.T) {
 	p := NewParticipant(t,
 		WithLog(log),
 		WithGenesis(model.ZeroHash),
-		WithRound(0),
 		WithIgnore(),
 		WithStop(
 			AfterRound(4096, errFinished),

@@ -35,41 +35,6 @@ func (_m *State) Leader(height uint64) (model.Hash, error) {
 	return r0, r1
 }
 
-// Round provides a mock function with given fields:
-func (_m *State) Round() (uint64, error) {
-	ret := _m.Called()
-
-	var r0 uint64
-	if rf, ok := ret.Get(0).(func() uint64); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Get(0).(uint64)
-	}
-
-	var r1 error
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// Set provides a mock function with given fields: height
-func (_m *State) Set(height uint64) error {
-	ret := _m.Called(height)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(uint64) error); ok {
-		r0 = rf(height)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
 // Threshold provides a mock function with given fields:
 func (_m *State) Threshold() (uint, error) {
 	ret := _m.Called()

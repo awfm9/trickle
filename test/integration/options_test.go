@@ -32,12 +32,6 @@ func WithGenesis(genesisID model.Hash) Option {
 	}
 }
 
-func WithRound(round uint64) Option {
-	return func(p *Participant) {
-		p.round = round
-	}
-}
-
 func WithIgnore(errs ...error) Option {
 	return func(p *Participant) {
 		p.ignore = errs

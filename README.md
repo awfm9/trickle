@@ -19,7 +19,7 @@ Version 0.0.1
 Version 0.0.2
 
 - [x] implement cache components
-- [ ] implement chain component
+- [ ] implement graph component
 - [ ] add state extension check
 - [ ] add vertex confirmation
 

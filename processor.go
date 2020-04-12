@@ -9,6 +9,7 @@ import (
 
 type Processor struct {
 	net    Network
+	graph  Graph
 	state  State
 	build  Builder
 	sign   Signer
@@ -17,11 +18,12 @@ type Processor struct {
 	vcache VoteCache
 }
 
-func NewProcessor(state State, net Network, build Builder, sign Signer, verify Verifier, pcache ProposalCache, vcache VoteCache) *Processor {
+func NewProcessor(net Network, graph Graph, state State, build Builder, sign Signer, verify Verifier, pcache ProposalCache, vcache VoteCache) *Processor {
 
 	pro := Processor{
-		state:  state,
 		net:    net,
+		graph:  graph,
+		state:  state,
 		build:  build,
 		sign:   sign,
 		verify: verify,
@@ -32,35 +34,36 @@ func NewProcessor(state State, net Network, build Builder, sign Signer, verify V
 	return &pro
 }
 
-func (pro *Processor) Bootstrap(genesisID model.Hash) error {
+func (pro *Processor) Bootstrap(arcID model.Hash) error {
 
-	// get current round
-	round, err := pro.state.Round()
-	if err != nil {
-		return fmt.Errorf("could not get current round: %w", err)
-	}
-
-	// make sure we are at zero round
+	// get current graph tip
+	round, err := pro.graph.Round()
 	if round != 0 {
-		return fmt.Errorf("invalid bootstrap height (%d)", round)
+		return fmt.Errorf("graph round not zero")
 	}
 
-	// create the genesis vertex
-	genesis := model.Vertex{
+	// create root vertex
+	root := model.Vertex{
 		Parent:   nil,
 		Height:   0,
-		ArcID:    genesisID,
+		ArcID:    arcID,
 		SignerID: model.ZeroHash,
 	}
 
+	// extend the graph with the root
+	err = pro.graph.Extend(&root)
+	if err != nil {
+		return fmt.Errorf("could not extend graph with root: %w", err)
+	}
+
 	// create the vote for the proposed vertex
-	vote, err := pro.sign.Vote(&genesis)
+	vote, err := pro.sign.Vote(&root)
 	if err != nil {
 		return fmt.Errorf("could not create genesis vote: %w", err)
 	}
 
 	// get the collector of the genesis round
-	collectorID, err := pro.state.Leader(genesis.Height + 1)
+	collectorID, err := pro.state.Leader(root.Height + 1)
 	if err != nil {
 		return fmt.Errorf("could not get collector: %w", err)
 	}
@@ -76,15 +79,15 @@ func (pro *Processor) Bootstrap(genesisID model.Hash) error {
 
 func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
-	// get the current round
-	cutoff, err := pro.state.Round()
+	// get the current graph height
+	round, err := pro.graph.Round()
 	if err != nil {
-		return fmt.Errorf("could not get cutoff: %w", err)
+		return fmt.Errorf("could not get round: %w", err)
 	}
 
 	// check if the proposal is not outdated
-	if proposal.Height < cutoff {
-		return ObsoleteProposal{Proposal: proposal, Cutoff: cutoff}
+	if proposal.Height < round {
+		return ObsoleteProposal{Proposal: proposal, Round: round}
 	}
 
 	// get the proposer at the proposal height
@@ -113,35 +116,39 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 		return nil
 	}
 
-	// NOTE: we currently don't check if we have the parent, which allows us to
-	// skip ahead, even if we don't know the chain up to this point
+	// NOTE: We currently don't check if we have the parent, which allows us to
+	// skip ahead, even if we don't know the chain up to this point.
 
-	// NOTE: we never check if the Parent is on a vertex that is a valid extension of
-	// the state; if it wasn't, the system would already be compromised, because
-	// we have a majority of validators voting for an invalid vertex - we can
-	// therefore simply jump to the height after the Parent/parent
+	// NOTE: We. never check if the parent is on a vertex that is a valid
+	// extension of the state; if it wasn't, the system would already be
+	// compromised. This allows us to skip ahead to the next height regardless
+	// of the validity of the new proposal.
 
-	// set our state to the new height
-	err = pro.state.Set(proposal.Height)
+	// confirm the parent of the proposal
+	err = pro.graph.Confirm(proposal.Parent.VertexID)
 	if err != nil {
-		return fmt.Errorf("could not transition round: %w", err)
+		return fmt.Errorf("could not confirm parent: %w", err)
 	}
 
 	// clear the cache for votes up to the confirmed height
-	err = pro.vcache.Clear(proposal.Height - 1)
+	err = pro.vcache.Clear(proposal.Parent.Height)
 	if err != nil {
 		return fmt.Errorf("could not clear vote cache: %w", err)
 	}
 
 	// clear the cache for proposals up to the confirmed height
-	err = pro.pcache.Clear(proposal.Height - 1)
+	err = pro.pcache.Clear(proposal.Parent.Height)
 	if err != nil {
 		return fmt.Errorf("could not clear proposal cache: %w", err)
 	}
 
-	// TODO: check if the proposed vertex is a valid extension of the state
+	// check if the new proposal is a valid extension of the graph
+	err = pro.graph.Extend(proposal.Vertex)
+	if err != nil {
+		return fmt.Errorf("could not extend graph: %w", err)
+	}
 
-	// get own ID
+	// get own ID to compare against collector and leader
 	selfID, err := pro.sign.Self()
 	if err != nil {
 		return fmt.Errorf("could not get self: %w", err)
@@ -186,18 +193,18 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
 func (pro *Processor) OnVote(vote *message.Vote) error {
 
-	// get current round
-	cutoff, err := pro.state.Round()
+	// get the current graph tip
+	round, err := pro.graph.Round()
 	if err != nil {
-		return fmt.Errorf("could not get cutoff: %w", err)
+		return fmt.Errorf("could not get height: %w", err)
 	}
 
 	// check that the vote is not outdated
-	if vote.Height < cutoff {
-		return ObsoleteVote{Vote: vote, Cutoff: cutoff}
+	if vote.Height < round {
+		return ObsoleteVote{Vote: vote, Round: round}
 	}
 
-	// get own ID
+	// get own ID to compare against collector
 	selfID, err := pro.sign.Self()
 	if err != nil {
 		return fmt.Errorf("could not get self: %w", err)
@@ -254,13 +261,13 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 		signature = append(signature, vote.Signature...)
 	}
 
-	// get a random arc
+	// get a random arc from the builder
 	arcID, err := pro.build.Arc()
 	if err != nil {
 		return fmt.Errorf("could not build arc: %w", err)
 	}
 
-	// NOTE: this can create a Parent for a vertex have not even seen yet;
+	// NOTE: this can create a parent with a vertex have not even seen yet;
 	// however, with the majority voting for it, we should be able to rely on it
 
 	// create the Parent for the new proposal
