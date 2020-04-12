@@ -21,7 +21,7 @@ Version 0.0.2
 - [ ] implement buffer component
 - [ ] implement chain component
 - [ ] add state extension check
-- [ ] add finalization of vertices
+- [ ] add vertex confirmation
 
 ### Milestone 3 - Cryptography
 
@@ -29,43 +29,43 @@ Version 0.0.3
 
 - [ ] implement signature component
 - [ ] implement verification component
-- [ ] add identity set for participants
+- [ ] add participants identity set
 - [ ] add signature creation & checking
 
 ### Milestone 4 - Randomness
 
 Version 0.0.4
 
-- [ ] add threshold key share generation
-- [ ] add threshold signature shares to votes
-- [ ] add threshold signature to vertices
+- [ ] add entropy key setup
+- [ ] add entropy vote signatures
+- [ ] add vertex random source
 
 ### Milestone 5 - Liveness
 
 Version 0.1.0
 
-- [ ] add depth concept to vertices
-- [ ] add timeout mechanism for leader
+- [ ] add vertex depth concept
+- [ ] add leader timeout mechanism
 
 ### Milestone X - Incentives
 
-Version 0.2.0
-
-- [ ] add native economic token ledger
-- [ ] add transaction fee distribution
+- [ ] add native token ledger
+- [ ] add direct reward structure
 - [ ] add slashing challenges
 
 ### Milestone X - Committee
 
-Version 0.3.0
-
+- [ ] add validator tokens
 - [ ] add checkpoints / epochs
 - [ ] add staking / unstaking
-- [ ] add validator token auctions
-- [ ] add validator token buybacks
 
-### Miscellaneous
-
-Version x.x.x
+### Milestone X - Delegation
 
 - [ ] add stake delegation
+
+### Milestone X - Auctions
+
+- [ ] add validator reward pool
+- [ ] add native token auctions
+- [ ] add native token buybacks
+- [ ] add reward distribution scheme
