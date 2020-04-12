@@ -5,5 +5,5 @@ import (
 )
 
 type Builder interface {
-	PayloadHash() (model.Hash, error)
+	Arc() (model.Hash, error)
 }

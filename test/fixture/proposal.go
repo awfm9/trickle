@@ -9,7 +9,7 @@ import (
 
 func Proposal(t require.TestingT, options ...func(*message.Proposal)) *message.Proposal {
 	proposal := message.Proposal{
-		Block:     Block(t),
+		Vertex:    Vertex(t),
 		Signature: Sig(t),
 	}
 	for _, option := range options {
@@ -18,8 +18,8 @@ func Proposal(t require.TestingT, options ...func(*message.Proposal)) *message.P
 	return &proposal
 }
 
-func WithBlock(block *model.Block) func(*message.Proposal) {
+func WithVertex(vertex *model.Vertex) func(*message.Proposal) {
 	return func(proposal *message.Proposal) {
-		proposal.Block = block
+		proposal.Vertex = vertex
 	}
 }

@@ -27,7 +27,7 @@ func TestSingularSet(t *testing.T) {
 		),
 	)
 
-	// bootstrap with genesis block
+	// bootstrap with genesis vertex
 	genesis := fixture.Genesis(t)
 	err := p.pro.Bootstrap(genesis)
 	require.NoError(t, err, "bootstrap should pass")
@@ -42,7 +42,7 @@ func TestMinimalSet(t *testing.T) {
 	// number of nodes
 	n := uint(3)
 
-	// create the participants to stop of 10000 blocks or error
+	// create the participants
 	participantIDs := fixture.Hashes(t, n)
 	participants := make([]*Participant, 0, len(participantIDs))
 	for index, selfID := range participantIDs {
@@ -91,7 +91,7 @@ func TestSmallSet(t *testing.T) {
 	// number of nodes
 	n := uint(7)
 
-	// create the participants to stop of 10000 blocks or error
+	// create the participants
 	participantIDs := fixture.Hashes(t, n)
 	participants := make([]*Participant, 0, len(participantIDs))
 	for index, selfID := range participantIDs {
@@ -118,7 +118,7 @@ func TestSmallSet(t *testing.T) {
 	genesis := fixture.Genesis(t)
 	for _, p := range participants {
 		err := p.pro.Bootstrap(genesis)
-		require.NoError(t, err, "genesis block should not error")
+		require.NoError(t, err, "genesis vertex should not error")
 	}
 
 	// start execution on each participant
@@ -140,7 +140,7 @@ func TestBigSet(t *testing.T) {
 	// number of nodes
 	n := uint(101)
 
-	// create the participants to stop of 10000 blocks or error
+	// create the participants
 	participantIDs := fixture.Hashes(t, n)
 	participants := make([]*Participant, 0, len(participantIDs))
 	for index, selfID := range participantIDs {
@@ -167,7 +167,7 @@ func TestBigSet(t *testing.T) {
 	genesis := fixture.Genesis(t)
 	for _, p := range participants {
 		err := p.pro.Bootstrap(genesis)
-		require.NoError(t, err, "genesis block should not error")
+		require.NoError(t, err, "genesis vertex should not error")
 	}
 
 	// start execution on each participant

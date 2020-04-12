@@ -70,13 +70,13 @@ func (_m *Buffer) Vote(vote *message.Vote) (bool, error) {
 	return r0, r1
 }
 
-// Votes provides a mock function with given fields: blockID
-func (_m *Buffer) Votes(blockID model.Hash) ([]*message.Vote, error) {
-	ret := _m.Called(blockID)
+// Votes provides a mock function with given fields: vertexID
+func (_m *Buffer) Votes(vertexID model.Hash) ([]*message.Vote, error) {
+	ret := _m.Called(vertexID)
 
 	var r0 []*message.Vote
 	if rf, ok := ret.Get(0).(func(model.Hash) []*message.Vote); ok {
-		r0 = rf(blockID)
+		r0 = rf(vertexID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*message.Vote)
@@ -85,7 +85,7 @@ func (_m *Buffer) Votes(blockID model.Hash) ([]*message.Vote, error) {
 
 	var r1 error
 	if rf, ok := ret.Get(1).(func(model.Hash) error); ok {
-		r1 = rf(blockID)
+		r1 = rf(vertexID)
 	} else {
 		r1 = ret.Error(1)
 	}

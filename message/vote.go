@@ -6,7 +6,7 @@ import (
 
 type Vote struct {
 	Height    uint64
-	BlockID   model.Hash
+	VertexID  model.Hash
 	SignerID  model.Hash
 	Signature model.Signature
 }

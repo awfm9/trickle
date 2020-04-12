@@ -1,6 +1,8 @@
 package fixture
 
 import (
+	"math/rand"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/alvalor/consensus/message"
@@ -9,16 +11,18 @@ import (
 
 func Vote(t require.TestingT, options ...func(*message.Vote)) *message.Vote {
 	vote := message.Vote{
-		BlockID:   Hash(t),
+		Height:    rand.Uint64(),
+		VertexID:  Hash(t),
 		SignerID:  Hash(t),
 		Signature: Sig(t),
 	}
 	return &vote
 }
 
-func WithCandidate(block *model.Block) func(*message.Vote) {
+func WithCandidate(vertex *model.Vertex) func(*message.Vote) {
 	return func(vote *message.Vote) {
-		vote.BlockID = block.ID()
+		vote.Height = vertex.Height
+		vote.VertexID = vertex.ID()
 	}
 }
 

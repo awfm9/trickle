@@ -59,7 +59,7 @@ type DoubleProposal struct {
 }
 
 func (dp DoubleProposal) Error() string {
-	return fmt.Sprintf("double proposal (proposer: %x, block1: %x, block2: %x)", dp.First.SignerID, dp.First.ID(), dp.Second.ID())
+	return fmt.Sprintf("double proposal (proposer: %x, vertex1: %x, vertex2: %x)", dp.First.SignerID, dp.First.ID(), dp.Second.ID())
 }
 
 type DoubleVote struct {
@@ -68,5 +68,5 @@ type DoubleVote struct {
 }
 
 func (dv DoubleVote) Error() string {
-	return fmt.Sprintf("double vote (voter: %x, block1: %x, block2: %x)", dv.First.SignerID, dv.First.BlockID, dv.Second.BlockID)
+	return fmt.Sprintf("double vote (voter: %x, vertex1: %x, vertex2: %x)", dv.First.SignerID, dv.First.VertexID, dv.Second.VertexID)
 }

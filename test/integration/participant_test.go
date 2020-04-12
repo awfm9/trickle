@@ -29,7 +29,7 @@ type Participant struct {
 
 	// processor data
 	round      uint64
-	blockDB    map[model.Hash]*model.Block
+	vertexDB   map[model.Hash]*model.Vertex
 	proposalDB map[model.Hash]*message.Proposal
 	voteDB     map[model.Hash](map[model.Hash]*message.Vote)
 	proposalQ  chan *message.Proposal
@@ -60,7 +60,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		stop:           []Condition{AfterRound(10, errFinished)},
 		ignore:         []error{consensus.ObsoleteProposal{}, consensus.ObsoleteVote{}},
 
-		blockDB:    make(map[model.Hash]*model.Block),
+		vertexDB:   make(map[model.Hash]*model.Vertex),
 		proposalDB: make(map[model.Hash]*message.Proposal),
 		voteDB:     make(map[model.Hash](map[model.Hash]*message.Vote)),
 		proposalQ:  make(chan *message.Proposal, 1024),
@@ -129,7 +129,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	)
 
 	// program random builder behaviour
-	p.build.On("PayloadHash").Return(
+	p.build.On("Arc").Return(
 		func() model.Hash {
 			seed := make([]byte, 128)
 			n, err := rand.Read(seed)
@@ -149,10 +149,10 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		nil,
 	)
 	p.sign.On("Proposal", mock.Anything).Return(
-		func(block *model.Block) *message.Proposal {
-			block.SignerID = p.selfID
+		func(vertex *model.Vertex) *message.Proposal {
+			vertex.SignerID = p.selfID
 			proposal := message.Proposal{
-				Block:     block,
+				Vertex:    vertex,
 				Signature: nil,
 			}
 			return &proposal
@@ -160,10 +160,10 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		nil,
 	)
 	p.sign.On("Vote", mock.Anything).Return(
-		func(block *model.Block) *message.Vote {
+		func(vertex *model.Vertex) *message.Vote {
 			vote := message.Vote{
-				Height:    block.Height,
-				BlockID:   block.ID(),
+				Height:    vertex.Height,
+				VertexID:  vertex.ID(),
 				SignerID:  p.selfID,
 				Signature: nil,
 			}
@@ -176,7 +176,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	p.verify.On("Proposal", mock.Anything).Return(nil)
 	p.verify.On("Vote", mock.Anything).Return(nil)
 
-	// program single-block buffer behaviour
+	// program single-vertex buffer behaviour
 	p.buffer.On("Proposal", mock.Anything).Return(
 		func(proposal *message.Proposal) bool {
 			_, hasProposal := p.proposalDB[proposal.ID()]
@@ -193,10 +193,10 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	)
 	p.buffer.On("Vote", mock.Anything).Return(
 		func(vote *message.Vote) bool {
-			tally, hasBlock := p.voteDB[vote.BlockID]
-			if !hasBlock {
+			tally, hasVertex := p.voteDB[vote.VertexID]
+			if !hasVertex {
 				tally = make(map[model.Hash]*message.Vote)
-				p.voteDB[vote.BlockID] = tally
+				p.voteDB[vote.VertexID] = tally
 			}
 			_, hasVote := tally[vote.SignerID]
 			if hasVote {
@@ -206,24 +206,24 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 			return true
 		},
 		func(vote *message.Vote) error {
-			tally, hasBlock := p.voteDB[vote.BlockID]
-			if !hasBlock {
+			tally, hasVertex := p.voteDB[vote.VertexID]
+			if !hasVertex {
 				return nil
 			}
 			duplicate, hasVote := tally[vote.SignerID]
 			if !hasVote {
 				return nil
 			}
-			if vote.BlockID == duplicate.BlockID {
+			if vote.VertexID == duplicate.VertexID {
 				return nil
 			}
 			return consensus.DoubleVote{First: duplicate, Second: vote}
 		},
 	)
 	p.buffer.On("Votes", mock.Anything).Return(
-		func(blockID model.Hash) []*message.Vote {
+		func(VertexID model.Hash) []*message.Vote {
 			var votes []*message.Vote
-			tally, tallied := p.voteDB[blockID]
+			tally, tallied := p.voteDB[VertexID]
 			if tallied {
 				for _, vote := range tally {
 					votes = append(votes, vote)
@@ -235,16 +235,16 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	)
 	p.buffer.On("Clear", mock.Anything).Return(
 		func(height uint64) error {
-			for blockID, proposal := range p.proposalDB {
+			for VertexID, proposal := range p.proposalDB {
 				if proposal.Height <= height {
-					delete(p.voteDB, blockID)
-					delete(p.blockDB, blockID)
+					delete(p.voteDB, VertexID)
+					delete(p.vertexDB, VertexID)
 				}
 			}
-			for blockID, tally := range p.voteDB {
+			for VertexID, tally := range p.voteDB {
 				for _, vote := range tally {
 					if vote.Height <= height {
-						delete(p.voteDB, blockID)
+						delete(p.voteDB, VertexID)
 					}
 					break
 				}

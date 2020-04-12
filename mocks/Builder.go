@@ -12,8 +12,8 @@ type Builder struct {
 	mock.Mock
 }
 
-// PayloadHash provides a mock function with given fields:
-func (_m *Builder) PayloadHash() (model.Hash, error) {
+// Arc provides a mock function with given fields:
+func (_m *Builder) Arc() (model.Hash, error) {
 	ret := _m.Called()
 
 	var r0 model.Hash

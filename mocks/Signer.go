@@ -14,13 +14,13 @@ type Signer struct {
 	mock.Mock
 }
 
-// Proposal provides a mock function with given fields: block
-func (_m *Signer) Proposal(block *model.Block) (*message.Proposal, error) {
-	ret := _m.Called(block)
+// Proposal provides a mock function with given fields: vertex
+func (_m *Signer) Proposal(vertex *model.Vertex) (*message.Proposal, error) {
+	ret := _m.Called(vertex)
 
 	var r0 *message.Proposal
-	if rf, ok := ret.Get(0).(func(*model.Block) *message.Proposal); ok {
-		r0 = rf(block)
+	if rf, ok := ret.Get(0).(func(*model.Vertex) *message.Proposal); ok {
+		r0 = rf(vertex)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*message.Proposal)
@@ -28,8 +28,8 @@ func (_m *Signer) Proposal(block *model.Block) (*message.Proposal, error) {
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(*model.Block) error); ok {
-		r1 = rf(block)
+	if rf, ok := ret.Get(1).(func(*model.Vertex) error); ok {
+		r1 = rf(vertex)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -60,13 +60,13 @@ func (_m *Signer) Self() (model.Hash, error) {
 	return r0, r1
 }
 
-// Vote provides a mock function with given fields: block
-func (_m *Signer) Vote(block *model.Block) (*message.Vote, error) {
-	ret := _m.Called(block)
+// Vote provides a mock function with given fields: vertex
+func (_m *Signer) Vote(vertex *model.Vertex) (*message.Vote, error) {
+	ret := _m.Called(vertex)
 
 	var r0 *message.Vote
-	if rf, ok := ret.Get(0).(func(*model.Block) *message.Vote); ok {
-		r0 = rf(block)
+	if rf, ok := ret.Get(0).(func(*model.Vertex) *message.Vote); ok {
+		r0 = rf(vertex)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*message.Vote)
@@ -74,8 +74,8 @@ func (_m *Signer) Vote(block *model.Block) (*message.Vote, error) {
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(*model.Block) error); ok {
-		r1 = rf(block)
+	if rf, ok := ret.Get(1).(func(*model.Vertex) error); ok {
+		r1 = rf(vertex)
 	} else {
 		r1 = ret.Error(1)
 	}

@@ -2,7 +2,6 @@ package consensus
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/model"
@@ -31,7 +30,7 @@ func NewProcessor(state State, net Network, build Builder, sign Signer, verify V
 	return &pro
 }
 
-func (pro *Processor) Bootstrap(genesis *model.Block) error {
+func (pro *Processor) Bootstrap(genesis *model.Vertex) error {
 
 	// check that we are at height zero
 	round, err := pro.state.Round()
@@ -44,27 +43,27 @@ func (pro *Processor) Bootstrap(genesis *model.Block) error {
 		return fmt.Errorf("invalid round for bootstrap (%d)", round)
 	}
 
-	// check that genesis block is at height zero
+	// check that genesis vertex is at height zero
 	if genesis.Height != 0 {
 		return fmt.Errorf("invalid genesis height (%d)", genesis.Height)
 	}
 
 	// check that genesis has no QC
 	if genesis.QC != nil {
-		return fmt.Errorf("genesis has parent (%x)", genesis.QC.BlockID)
+		return fmt.Errorf("genesis has parent (%x)", genesis.QC.VertexID)
 	}
 
-	// check that genesis has no payload
-	if genesis.PayloadHash != model.ZeroHash {
-		return fmt.Errorf("genesis has payload (%x)", genesis.PayloadHash)
+	// check that genesis has no arc
+	if genesis.ArcID != model.ZeroHash {
+		return fmt.Errorf("genesis has arc (%x)", genesis.ArcID)
 	}
 
-	// check that genesis block has no proposer
+	// check that genesis vertex has no proposer
 	if genesis.SignerID != model.ZeroHash {
 		return fmt.Errorf("genesis has signer (%x)", genesis.SignerID)
 	}
 
-	// create the vote for the proposed block
+	// create the vote for the proposed vertex
 	vote, err := pro.sign.Vote(genesis)
 	if err != nil {
 		return fmt.Errorf("could not create genesis vote: %w", err)
@@ -109,7 +108,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 		return InvalidProposer{Proposal: proposal, Leader: leaderID}
 	}
 
-	// check if the proposed block has a valid signature & QC
+	// check if the proposed vertex has a valid signature & QC
 	err = pro.verify.Proposal(proposal)
 	if err != nil {
 		return fmt.Errorf("could not verify proposal: %w", err)
@@ -127,9 +126,9 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	// NOTE: we currently don't check if we have the parent, which allows us to
 	// skip ahead, even if we don't know the chain up to this point
 
-	// NOTE: we never check if the QC is on a block that is a valid extension of
+	// NOTE: we never check if the QC is on a vertex that is a valid extension of
 	// the state; if it wasn't, the system would already be compromised, because
-	// we have a majority of validators voting for an invalid block - we can
+	// we have a majority of validators voting for an invalid vertex - we can
 	// therefore simply jump to the height after the QC/parent
 
 	// set our state to the new height
@@ -138,13 +137,13 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 		return fmt.Errorf("could not transition round: %w", err)
 	}
 
-	// clear the buffer for the voted block
+	// clear the buffer for the voted vertex
 	err = pro.buffer.Clear(proposal.Height - 1)
 	if err != nil {
 		return fmt.Errorf("could not clear buffer: %w", err)
 	}
 
-	// TODO: check if the proposed block is a valid extension of the state
+	// TODO: check if the proposed vertex is a valid extension of the state
 
 	// get own ID
 	selfID, err := pro.sign.Self()
@@ -159,7 +158,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	}
 
 	// if we are the next collector, we should collect the vote that is included
-	// implicitly in the block proposal by the proposal; in order to avoid
+	// implicitly in the vertex proposal by the proposal; in order to avoid
 	// creating extra code paths, we send it as message to ourselves
 	if collectorID == selfID {
 		err = pro.net.Transmit(proposal.Vote(), selfID)
@@ -174,13 +173,13 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 		return nil
 	}
 
-	// create own vote for the proposed block
-	vote, err := pro.sign.Vote(proposal.Block)
+	// create own vote for the proposed vertex
+	vote, err := pro.sign.Vote(proposal.Vertex)
 	if err != nil {
 		return fmt.Errorf("could not create vote: %w", err)
 	}
 
-	// send the vote for the proposed block to the next collector
+	// send the vote for the proposed vertex to the next collector
 	err = pro.net.Transmit(vote, collectorID)
 	if err != nil {
 		return fmt.Errorf("could not transmit vote: %w", err)
@@ -240,8 +239,8 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 		return fmt.Errorf("could not get threshold: %w", err)
 	}
 
-	// get the votes for the given block
-	votes, err := pro.buffer.Votes(vote.BlockID)
+	// get the votes for the given vertex
+	votes, err := pro.buffer.Votes(vote.VertexID)
 	if err != nil {
 		return fmt.Errorf("could not get votes: %w", err)
 	}
@@ -259,32 +258,31 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 		signature = append(signature, vote.Signature...)
 	}
 
-	// get a random payload
-	payloadHash, err := pro.build.PayloadHash()
+	// get a random arc
+	arcID, err := pro.build.Arc()
 	if err != nil {
-		return fmt.Errorf("could not build payload: %w", err)
+		return fmt.Errorf("could not build arc: %w", err)
 	}
 
-	// NOTE: this can create a QC for a block have not even seen yet;
+	// NOTE: this can create a QC for a vertex have not even seen yet;
 	// however, with the majority voting for it, we should be able to rely on it
 
 	// create the QC for the new proposal
 	qc := model.QC{
-		BlockID:   vote.BlockID,
+		VertexID:  vote.VertexID,
 		SignerIDs: signerIDs,
 		Signature: signature,
 	}
 
-	// create the block for the new proposal
-	block := model.Block{
-		Height:      vote.Height + 1,
-		QC:          &qc,
-		PayloadHash: payloadHash,
-		Timestamp:   time.Now().UTC(),
+	// create the vertex for the new proposal
+	vertex := model.Vertex{
+		Height: vote.Height + 1,
+		QC:     &qc,
+		ArcID:  arcID,
 	}
 
 	// create the new proposal
-	proposal, err := pro.sign.Proposal(&block)
+	proposal, err := pro.sign.Proposal(&vertex)
 	if err != nil {
 		return fmt.Errorf("could not create proposal: %w", err)
 	}
