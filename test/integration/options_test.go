@@ -1,8 +1,9 @@
 package integration
 
 import (
-	"github.com/alvalor/consensus/model"
 	"github.com/rs/zerolog"
+
+	"github.com/alvalor/consensus/model"
 )
 
 type Option func(*Participant)

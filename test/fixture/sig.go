@@ -3,10 +3,12 @@ package fixture
 import (
 	"crypto/rand"
 
+	"github.com/alvalor/consensus/model"
+
 	"github.com/stretchr/testify/require"
 )
 
-func Sig(t require.TestingT) []byte {
+func Sig(t require.TestingT) model.Signature {
 	seed := make([]byte, 128)
 	n, err := rand.Read(seed)
 	require.NoError(t, err, "could not read random seed")
