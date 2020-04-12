@@ -3,8 +3,8 @@ package integration
 import (
 	"crypto/rand"
 	"fmt"
-	"os"
-	"sync"
+	"io/ioutil"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
@@ -15,23 +15,27 @@ import (
 	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/mocks"
 	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/test/fixture"
 )
 
 type Participant struct {
 
-	// participant data
+	// participant configuration
+	log            zerolog.Logger
 	selfID         model.Hash
 	participantIDs []model.Hash
-	proposals      chan *message.Proposal
-	votes          chan *message.Vote
+	stop           []Condition
+	ignore         []error
 
 	// processor data
 	round      uint64
 	blockDB    map[model.Hash]*model.Block
 	proposalDB map[model.Hash]*message.Proposal
 	voteDB     map[model.Hash](map[model.Hash]*message.Vote)
+	proposalQ  chan *message.Proposal
+	voteQ      chan *message.Vote
 
-	// component mocks
+	// processor dependencies
 	state  *mocks.State
 	net    *mocks.Network
 	build  *mocks.Builder
@@ -39,27 +43,28 @@ type Participant struct {
 	verify *mocks.Verifier
 	buffer *mocks.Buffer
 
-	// participant processor
+	// processor instance
 	pro *consensus.Processor
-
-	// test-related dependencies
-	log  zerolog.Logger
-	wg   sync.WaitGroup
-	stop Condition
 }
 
-func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Participant {
+func NewParticipant(t require.TestingT, options ...Option) *Participant {
 
+	// initialize the default values for the participant
+	selfID := fixture.Hash(t)
 	p := Participant{
+
+		log:            zerolog.New(ioutil.Discard),
 		selfID:         selfID,
 		participantIDs: []model.Hash{selfID},
-		proposals:      make(chan *message.Proposal, 1024),
-		votes:          make(chan *message.Vote, 1024),
+		round:          0,
+		stop:           []Condition{AfterRound(10, errFinished)},
+		ignore:         []error{consensus.ObsoleteProposal{}, consensus.ObsoleteVote{}},
 
-		round:      0,
 		blockDB:    make(map[model.Hash]*model.Block),
 		proposalDB: make(map[model.Hash]*message.Proposal),
 		voteDB:     make(map[model.Hash](map[model.Hash]*message.Vote)),
+		proposalQ:  make(chan *message.Proposal, 1024),
+		voteQ:      make(chan *message.Vote, 1024),
 
 		net:    &mocks.Network{},
 		state:  &mocks.State{},
@@ -67,10 +72,11 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 		verify: &mocks.Verifier{},
 		buffer: &mocks.Buffer{},
 		build:  &mocks.Builder{},
+	}
 
-		wg:   sync.WaitGroup{},
-		stop: stop,
-		log:  zerolog.New(os.Stderr).With().Hex("self", selfID[:]).Logger(),
+	// apply the options
+	for _, option := range options {
+		option(&p)
 	}
 
 	// program round-robin state behaviour
@@ -108,17 +114,16 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 	// program loopback network mock behaviour
 	p.net.On("Broadcast", mock.Anything).Return(
 		func(proposal *message.Proposal) error {
-			p.log.Info().Msg("broadcasting proposal")
-			p.proposals <- proposal
+			p.proposalQ <- proposal
 			return nil
 		},
 	)
 	p.net.On("Transmit", mock.Anything, mock.Anything).Return(
 		func(vote *message.Vote, recipientID model.Hash) error {
-			if recipientID == p.selfID {
-				p.log.Info().Msg("transmitting vote")
-				p.votes <- vote
+			if recipientID != p.selfID {
+				return fmt.Errorf("invalid recipient (%x)", recipientID)
 			}
+			p.voteQ <- vote
 			return nil
 		},
 	)
@@ -217,7 +222,7 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 	)
 	p.buffer.On("Votes", mock.Anything).Return(
 		func(blockID model.Hash) []*message.Vote {
-			votes := make([]*message.Vote, 0, len(p.votes))
+			var votes []*message.Vote
 			tally, tallied := p.voteDB[blockID]
 			if tallied {
 				for _, vote := range tally {
@@ -255,45 +260,43 @@ func NewParticipant(t require.TestingT, selfID model.Hash, stop Condition) *Part
 
 func (p *Participant) Run() error {
 
+	// create the ignore function to easily check errors
+	ignore := Ignore(Combine(p.ignore...))
+
 	for {
 
-		// TODO: implement acceptable error filters once error types are
-		// returned by the processor
-
 		// check stop condition first
-		if p.stop(p) {
-			return nil
+		for _, condition := range p.stop {
+			err := condition(p)
+			if err != nil {
+				return err
+			}
 		}
 
-		// check for first priority messages (proposals)
+		// wait for a message to process
+		var err error
+		var entity string
 		select {
-		case proposal := <-p.proposals:
-			err := p.pro.OnProposal(proposal)
-			if err != nil {
-				p.log.Error().Err(err).Msg("could not process proposal")
-			} else {
-				p.log.Info().Msg("proposal processed")
-			}
-		default:
+		case proposal := <-p.proposalQ:
+			entity = "proposal"
+			err = p.pro.OnProposal(proposal)
+		case vote := <-p.voteQ:
+			entity = "vote"
+			err = p.pro.OnVote(vote)
+		case <-time.After(100 * time.Millisecond):
+			continue
 		}
 
-		// check for second priority messages (votes)
-		select {
-		case proposal := <-p.proposals:
-			err := p.pro.OnProposal(proposal)
-			if err != nil {
-				p.log.Error().Err(err).Msg("could not process proposal")
-			} else {
-				p.log.Info().Msg("proposal processed")
-			}
-		case vote := <-p.votes:
-			p.log.Info().Msg("processing vote")
-			err := p.pro.OnVote(vote)
-			if err != nil {
-				p.log.Error().Err(err).Msg("could not process vote")
-			} else {
-				p.log.Info().Msg("vote processed")
-			}
+		// check if we should log a message
+		if err == nil {
+			p.log.Info().Str("entity", entity).Msg("message processed")
+			continue
 		}
+		if ignore(err) {
+			p.log.Warn().Str("entity", entity).Msg("could not process message")
+			continue
+		}
+
+		return fmt.Errorf("could not process message: %w", err)
 	}
 }

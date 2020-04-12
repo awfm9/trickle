@@ -29,9 +29,8 @@ func Network(participants []*Participant) {
 		*sender.net = mocks.Network{}
 		sender.net.On("Broadcast", mock.Anything).Return(
 			func(proposal *message.Proposal) error {
-				sender.log.Info().Msg("broadcasting proposal")
 				for _, receiver := range participants {
-					receiver.proposals <- proposal
+					receiver.proposalQ <- proposal
 				}
 				return nil
 			},
@@ -42,8 +41,7 @@ func Network(participants []*Participant) {
 				if !exists {
 					return fmt.Errorf("invalid recipient (%x)", recipientID)
 				}
-				sender.log.Info().Hex("receiver", recipientID[:]).Msg("transmitting vote")
-				receiver.votes <- vote
+				receiver.voteQ <- vote
 				return nil
 			},
 		)

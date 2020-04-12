@@ -1,9 +1,13 @@
 package integration
 
 import (
+	"errors"
+	"os"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/alvalor/consensus/test/fixture"
@@ -12,7 +16,16 @@ import (
 func TestSingularSet(t *testing.T) {
 
 	// create a single participant
-	p := NewParticipant(t, fixture.Hash(t), Or(AfterRound(1000)))
+	log := zerolog.New(os.Stderr)
+	p := NewParticipant(t,
+		WithLog(log),
+		WithRound(0),
+		WithIgnore(),
+		WithStop(
+			AfterRound(4096, errFinished),
+			AfterDelay(8*time.Second, errTimeout),
+		),
+	)
 
 	// bootstrap with genesis block
 	genesis := fixture.Genesis(t)
@@ -21,18 +34,32 @@ func TestSingularSet(t *testing.T) {
 
 	// run until stop condition
 	err = p.Run()
-	require.NoError(t, err, "run should pass")
+	require.True(t, errors.Is(err, errFinished), "run should finish successfully (%s)", err)
 }
 
 func TestMinimalSet(t *testing.T) {
 
 	// number of nodes
-	n := 3
+	n := uint(3)
 
 	// create the participants to stop of 10000 blocks or error
-	participants := make([]*Participant, n)
-	for i := 0; i < n; i++ {
-		participants[i] = NewParticipant(t, fixture.Hash(t), AfterRound(1000))
+	participantIDs := fixture.Hashes(t, n)
+	participants := make([]*Participant, 0, len(participantIDs))
+	for index, selfID := range participantIDs {
+		log := zerolog.New(os.Stderr).With().
+			Int("index", index).
+			Hex("self", selfID[:]).
+			Logger()
+		p := NewParticipant(t,
+			WithLog(log),
+			WithSelf(selfID),
+			WithParticipants(participantIDs),
+			WithStop(
+				AfterRound(1024, errFinished),
+				AfterDelay(8*time.Second, errTimeout),
+			),
+		)
+		participants = append(participants, p)
 	}
 
 	// connect all participants together
@@ -53,7 +80,7 @@ func TestMinimalSet(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			err := p.Run()
-			require.NoError(t, err, "run should pass")
+			require.True(t, errors.Is(err, errFinished), "run should finish successfully (%s)", err)
 		}()
 	}
 	wg.Wait()
@@ -62,12 +89,26 @@ func TestMinimalSet(t *testing.T) {
 func TestSmallSet(t *testing.T) {
 
 	// number of nodes
-	n := 7
+	n := uint(7)
 
 	// create the participants to stop of 10000 blocks or error
-	participants := make([]*Participant, n)
-	for i := 0; i < n; i++ {
-		participants[i] = NewParticipant(t, fixture.Hash(t), AfterRound(1000))
+	participantIDs := fixture.Hashes(t, n)
+	participants := make([]*Participant, 0, len(participantIDs))
+	for index, selfID := range participantIDs {
+		log := zerolog.New(os.Stderr).With().
+			Int("index", index).
+			Hex("self", selfID[:]).
+			Logger()
+		p := NewParticipant(t,
+			WithLog(log),
+			WithSelf(selfID),
+			WithParticipants(participantIDs),
+			WithStop(
+				AfterRound(512, errFinished),
+				AfterDelay(8*time.Second, errTimeout),
+			),
+		)
+		participants = append(participants, p)
 	}
 
 	// connect all participants together
@@ -88,7 +129,7 @@ func TestSmallSet(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			err := p.Run()
-			require.NoError(t, err, "run should pass")
+			require.True(t, errors.Is(err, errFinished), "run should finish successfully (%s)", err)
 		}()
 	}
 	wg.Wait()
@@ -97,12 +138,26 @@ func TestSmallSet(t *testing.T) {
 func TestBigSet(t *testing.T) {
 
 	// number of nodes
-	n := 101
+	n := uint(101)
 
 	// create the participants to stop of 10000 blocks or error
-	participants := make([]*Participant, n)
-	for i := 0; i < n; i++ {
-		participants[i] = NewParticipant(t, fixture.Hash(t), AfterRound(1000))
+	participantIDs := fixture.Hashes(t, n)
+	participants := make([]*Participant, 0, len(participantIDs))
+	for index, selfID := range participantIDs {
+		log := zerolog.New(os.Stderr).With().
+			Int("index", index).
+			Hex("self", selfID[:]).
+			Logger()
+		p := NewParticipant(t,
+			WithLog(log),
+			WithSelf(selfID),
+			WithParticipants(participantIDs),
+			WithStop(
+				AfterRound(32, errFinished),
+				AfterDelay(8*time.Second, errTimeout),
+			),
+		)
+		participants = append(participants, p)
 	}
 
 	// connect all participants together
@@ -123,7 +178,7 @@ func TestBigSet(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			err := p.Run()
-			require.NoError(t, err, "run should pass")
+			require.True(t, errors.Is(err, errFinished), "run should finish successfully (%s)", err)
 		}()
 	}
 	wg.Wait()

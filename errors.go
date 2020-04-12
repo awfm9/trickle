@@ -44,15 +44,6 @@ func (ic InvalidCollector) Error() string {
 	return fmt.Sprintf("invalid collector (receiver: %x, collector: %x)", ic.Receiver, ic.Collector)
 }
 
-type InvalidSigner struct {
-	Entity string
-	Signer model.Hash
-}
-
-func (is InvalidSigner) Error() string {
-	return fmt.Sprintf("invalid signer (entity: %s, signer: %x)", is.Entity, is.Signer)
-}
-
 type InvalidSignature struct {
 	Entity string
 	Signer model.Hash

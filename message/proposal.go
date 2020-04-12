@@ -11,6 +11,7 @@ type Proposal struct {
 
 func (p *Proposal) Vote() *Vote {
 	vote := Vote{
+		Height:    p.Height,
 		BlockID:   p.Block.ID(),
 		SignerID:  p.SignerID,
 		Signature: p.Signature,
