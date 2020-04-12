@@ -30,41 +30,29 @@ func NewProcessor(state State, net Network, build Builder, sign Signer, verify V
 	return &pro
 }
 
-func (pro *Processor) Bootstrap(genesis *model.Vertex) error {
+func (pro *Processor) Bootstrap(genesisID model.Hash) error {
 
-	// check that we are at height zero
+	// get current round
 	round, err := pro.state.Round()
 	if err != nil {
-		return fmt.Errorf("could not get round: %w", err)
+		return fmt.Errorf("could not get current round: %w", err)
 	}
 
-	// check if round is zero
+	// make sure we are at zero round
 	if round != 0 {
-		return fmt.Errorf("invalid round for bootstrap (%d)", round)
+		return fmt.Errorf("invalid bootstrap height (%d)", round)
 	}
 
-	// check that genesis vertex is at height zero
-	if genesis.Height != 0 {
-		return fmt.Errorf("invalid genesis height (%d)", genesis.Height)
-	}
-
-	// check that genesis has no QC
-	if genesis.QC != nil {
-		return fmt.Errorf("genesis has parent (%x)", genesis.QC.VertexID)
-	}
-
-	// check that genesis has no arc
-	if genesis.ArcID != model.ZeroHash {
-		return fmt.Errorf("genesis has arc (%x)", genesis.ArcID)
-	}
-
-	// check that genesis vertex has no proposer
-	if genesis.SignerID != model.ZeroHash {
-		return fmt.Errorf("genesis has signer (%x)", genesis.SignerID)
+	// create the genesis vertex
+	genesis := model.Vertex{
+		QC:       nil,
+		Height:   0,
+		ArcID:    genesisID,
+		SignerID: model.ZeroHash,
 	}
 
 	// create the vote for the proposed vertex
-	vote, err := pro.sign.Vote(genesis)
+	vote, err := pro.sign.Vote(&genesis)
 	if err != nil {
 		return fmt.Errorf("could not create genesis vote: %w", err)
 	}

@@ -4,19 +4,18 @@ import (
 	"fmt"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/mocks"
 	"github.com/alvalor/consensus/model"
 )
 
-func Network(participants []*Participant) {
+func Network(t require.TestingT, participants ...*Participant) {
 
 	// create a list & a registry for participants
-	participantIDs := make([]model.Hash, 0, len(participants))
 	registry := make(map[model.Hash]*Participant)
 	for _, p := range participants {
-		participantIDs = append(participantIDs, p.selfID)
 		registry[p.selfID] = p
 	}
 
@@ -25,7 +24,6 @@ func Network(participants []*Participant) {
 	for i := range participants {
 		sender := participants[i]
 
-		sender.participantIDs = participantIDs
 		*sender.net = mocks.Network{}
 		sender.net.On("Broadcast", mock.Anything).Return(
 			func(proposal *message.Proposal) error {

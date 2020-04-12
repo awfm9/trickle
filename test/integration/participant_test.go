@@ -24,11 +24,12 @@ type Participant struct {
 	log            zerolog.Logger
 	selfID         model.Hash
 	participantIDs []model.Hash
+	genesisID      model.Hash
+	round          uint64
 	stop           []Condition
 	ignore         []error
 
 	// processor data
-	round      uint64
 	vertexDB   map[model.Hash]*model.Vertex
 	proposalDB map[model.Hash]*message.Proposal
 	voteDB     map[model.Hash](map[model.Hash]*message.Vote)
@@ -56,6 +57,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		log:            zerolog.New(ioutil.Discard),
 		selfID:         selfID,
 		participantIDs: []model.Hash{selfID},
+		genesisID:      model.ZeroHash,
 		round:          0,
 		stop:           []Condition{AfterRound(10, errFinished)},
 		ignore:         []error{consensus.ObsoleteProposal{}, consensus.ObsoleteVote{}},
@@ -253,6 +255,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		},
 	)
 
+	// inject dependencies into processor
 	p.pro = consensus.NewProcessor(p.state, p.net, p.build, p.sign, p.verify, p.buffer)
 
 	return &p

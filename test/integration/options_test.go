@@ -26,6 +26,12 @@ func WithParticipants(participantIDs []model.Hash) Option {
 	}
 }
 
+func WithGenesis(genesisID model.Hash) Option {
+	return func(p *Participant) {
+		p.genesisID = genesisID
+	}
+}
+
 func WithRound(round uint64) Option {
 	return func(p *Participant) {
 		p.round = round

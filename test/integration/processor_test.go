@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/alvalor/consensus/model"
 	"github.com/alvalor/consensus/test/fixture"
 )
 
@@ -19,6 +20,7 @@ func TestSingularSet(t *testing.T) {
 	log := zerolog.New(os.Stderr)
 	p := NewParticipant(t,
 		WithLog(log),
+		WithGenesis(model.ZeroHash),
 		WithRound(0),
 		WithIgnore(),
 		WithStop(
@@ -27,13 +29,11 @@ func TestSingularSet(t *testing.T) {
 		),
 	)
 
-	// bootstrap with genesis vertex
-	genesis := fixture.Genesis(t)
-	err := p.pro.Bootstrap(genesis)
-	require.NoError(t, err, "bootstrap should pass")
+	// bootstrap the participant
+	Bootstrap(t, p)
 
 	// run until stop condition
-	err = p.Run()
+	err := p.Run()
 	require.True(t, errors.Is(err, errFinished), "run should finish successfully (%s)", err)
 }
 
@@ -63,14 +63,8 @@ func TestMinimalSet(t *testing.T) {
 	}
 
 	// connect all participants together
-	Network(participants)
-
-	// bootstrap each participant
-	genesis := fixture.Genesis(t)
-	for _, p := range participants {
-		err := p.pro.Bootstrap(genesis)
-		require.NoError(t, err, "bootstrap should pass")
-	}
+	Network(t, participants...)
+	Bootstrap(t, participants...)
 
 	// start execution on each participant
 	var wg sync.WaitGroup
@@ -112,14 +106,8 @@ func TestSmallSet(t *testing.T) {
 	}
 
 	// connect all participants together
-	Network(participants)
-
-	// bootstrap each participant
-	genesis := fixture.Genesis(t)
-	for _, p := range participants {
-		err := p.pro.Bootstrap(genesis)
-		require.NoError(t, err, "genesis vertex should not error")
-	}
+	Network(t, participants...)
+	Bootstrap(t, participants...)
 
 	// start execution on each participant
 	var wg sync.WaitGroup
@@ -161,14 +149,8 @@ func TestBigSet(t *testing.T) {
 	}
 
 	// connect all participants together
-	Network(participants)
-
-	// bootstrap each participant
-	genesis := fixture.Genesis(t)
-	for _, p := range participants {
-		err := p.pro.Bootstrap(genesis)
-		require.NoError(t, err, "genesis vertex should not error")
-	}
+	Network(t, participants...)
+	Bootstrap(t, participants...)
 
 	// start execution on each participant
 	var wg sync.WaitGroup
