@@ -47,6 +47,7 @@ func TestMinimalSet(t *testing.T) {
 	participants := make([]*Participant, 0, len(participantIDs))
 	for index, selfID := range participantIDs {
 		log := zerolog.New(os.Stderr).With().
+			Timestamp().
 			Int("index", index).
 			Hex("self", selfID[:]).
 			Logger()
@@ -90,6 +91,7 @@ func TestSmallSet(t *testing.T) {
 	participants := make([]*Participant, 0, len(participantIDs))
 	for index, selfID := range participantIDs {
 		log := zerolog.New(os.Stderr).With().
+			Timestamp().
 			Int("index", index).
 			Hex("self", selfID[:]).
 			Logger()
@@ -133,6 +135,7 @@ func TestBigSet(t *testing.T) {
 	participants := make([]*Participant, 0, len(participantIDs))
 	for index, selfID := range participantIDs {
 		log := zerolog.New(os.Stderr).With().
+			Timestamp().
 			Int("index", index).
 			Hex("self", selfID[:]).
 			Logger()

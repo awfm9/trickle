@@ -1,15 +1,14 @@
 package integration
 
 import (
-	"crypto/rand"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/sha3"
 
 	"github.com/alvalor/consensus"
 	"github.com/alvalor/consensus/message"
@@ -49,6 +48,9 @@ type Participant struct {
 }
 
 func NewParticipant(t require.TestingT, options ...Option) *Participant {
+
+	// configure time function for zerolog
+	zerolog.TimestampFunc = func() time.Time { return time.Now().UTC() }
 
 	// initialize the default values for the participant
 	selfID := fixture.Hash(t)
@@ -99,7 +101,9 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	)
 	p.state.On("Leader", mock.Anything).Return(
 		func(height uint64) model.Hash {
-			index := int(height % uint64(len(p.participantIDs)))
+			src := rand.NewSource(int64(height))
+			r := rand.New(src)
+			index := r.Intn(len(p.participantIDs))
 			leader := p.participantIDs[index]
 			return leader
 		},
@@ -117,6 +121,15 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	p.net.On("Broadcast", mock.Anything).Return(
 		func(proposal *message.Proposal) error {
 			p.proposalQ <- proposal
+			vertexID := proposal.Vertex.ID()
+			p.log.Debug().
+				Str("message", "proposal").
+				Uint64("height", proposal.Height).
+				Hex("vertex", vertexID[:]).
+				Hex("parent", proposal.QC.VertexID[:]).
+				Hex("arc", proposal.ArcID[:]).
+				Hex("proposer", proposal.SignerID[:]).
+				Msg("proposal looped")
 			return nil
 		},
 	)
@@ -126,6 +139,12 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 				return fmt.Errorf("invalid recipient (%x)", recipientID)
 			}
 			p.voteQ <- vote
+			p.log.Debug().
+				Str("message", "vote").
+				Uint64("height", vote.Height).
+				Hex("vertex", vote.VertexID[:]).
+				Hex("voter", vote.SignerID[:]).
+				Msg("vote looped")
 			return nil
 		},
 	)
@@ -133,12 +152,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	// program random builder behaviour
 	p.build.On("Arc").Return(
 		func() model.Hash {
-			seed := make([]byte, 128)
-			n, err := rand.Read(seed)
-			require.NoError(t, err, "could not read seed")
-			require.Equal(t, len(seed), n, "could not read full seed")
-			hash := sha3.Sum256(seed)
-			return model.Hash(hash)
+			return fixture.Hash(t)
 		},
 		nil,
 	)
@@ -272,34 +286,41 @@ func (p *Participant) Run() error {
 		for _, condition := range p.stop {
 			err := condition(p)
 			if err != nil {
-				return err
+				return fmt.Errorf("encountered stop condition: %w", err)
 			}
 		}
 
-		// wait for a message to process
+		// set up logging entry and error
 		var err error
-		var entity string
+
+		// wait for a message to process
 		select {
 		case proposal := <-p.proposalQ:
-			entity = "proposal"
+			vertexID := proposal.Vertex.ID()
+			p.log.Debug().
+				Uint64("height", proposal.Height).
+				Hex("vertex", vertexID[:]).
+				Hex("parent", proposal.QC.VertexID[:]).
+				Hex("arc", proposal.ArcID[:]).
+				Hex("proposer", proposal.SignerID[:]).
+				Msg("proposal received")
 			err = p.pro.OnProposal(proposal)
 		case vote := <-p.voteQ:
-			entity = "vote"
+			p.log.Debug().
+				Uint64("height", vote.Height).
+				Hex("vertex", vote.VertexID[:]).
+				Hex("voter", vote.SignerID[:]).
+				Msg("vote received")
 			err = p.pro.OnVote(vote)
 		case <-time.After(100 * time.Millisecond):
 			continue
 		}
 
 		// check if we should log a message
-		if err == nil {
-			p.log.Info().Str("entity", entity).Msg("message processed")
-			continue
-		}
-		if ignore(err) {
-			p.log.Warn().Str("entity", entity).Msg("could not process message")
+		if err == nil || ignore(err) {
 			continue
 		}
 
-		return fmt.Errorf("could not process message: %w", err)
+		return fmt.Errorf("encountered critical error: %w", err)
 	}
 }

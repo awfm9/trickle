@@ -30,6 +30,14 @@ func Network(t require.TestingT, participants ...*Participant) {
 				for _, receiver := range participants {
 					receiver.proposalQ <- proposal
 				}
+				vertexID := proposal.Vertex.ID()
+				sender.log.Debug().
+					Uint64("height", proposal.Height).
+					Hex("vertex", vertexID[:]).
+					Hex("parent", proposal.QC.VertexID[:]).
+					Hex("arc", proposal.ArcID[:]).
+					Hex("proposer", proposal.SignerID[:]).
+					Msg("proposal broadcasted")
 				return nil
 			},
 		)
@@ -40,6 +48,11 @@ func Network(t require.TestingT, participants ...*Participant) {
 					return fmt.Errorf("invalid recipient (%x)", recipientID)
 				}
 				receiver.voteQ <- vote
+				sender.log.Debug().
+					Uint64("height", vote.Height).
+					Hex("vertex", vote.VertexID[:]).
+					Hex("voter", vote.SignerID[:]).
+					Msg("vote transmitted")
 				return nil
 			},
 		)
