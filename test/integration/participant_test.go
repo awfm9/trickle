@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/alvalor/consensus"
+	"github.com/alvalor/consensus/cache"
 	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/mocks"
 	"github.com/alvalor/consensus/model"
@@ -28,16 +29,19 @@ type Participant struct {
 	stop           []Condition
 	ignore         []error
 
-	// processor data
+	// state data
 	vertexDB   map[model.Hash]*model.Vertex
 	proposalDB map[model.Hash]*message.Proposal
-	voteDB     map[model.Hash](map[model.Hash]*message.Vote)
+	voteCache  map[model.Hash](map[model.Hash]*message.Vote)
 	proposalQ  chan *message.Proposal
 	voteQ      chan *message.Vote
 
-	// processor dependencies
-	state  *mocks.State
+	// real dependencies
+	vcache *cache.VoteCache
+
+	// dependency mocks
 	net    *mocks.Network
+	state  *mocks.State
 	build  *mocks.Builder
 	sign   *mocks.Signer
 	verify *mocks.Verifier
@@ -66,16 +70,18 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 
 		vertexDB:   make(map[model.Hash]*model.Vertex),
 		proposalDB: make(map[model.Hash]*message.Proposal),
-		voteDB:     make(map[model.Hash](map[model.Hash]*message.Vote)),
+		voteCache:  make(map[model.Hash](map[model.Hash]*message.Vote)),
 		proposalQ:  make(chan *message.Proposal, 1024),
 		voteQ:      make(chan *message.Vote, 1024),
 
+		vcache: cache.NewVoteCache(),
+
 		net:    &mocks.Network{},
 		state:  &mocks.State{},
+		build:  &mocks.Builder{},
 		sign:   &mocks.Signer{},
 		verify: &mocks.Verifier{},
 		buffer: &mocks.Buffer{},
-		build:  &mocks.Builder{},
 	}
 
 	// apply the options
@@ -207,70 +213,9 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 			return nil
 		},
 	)
-	p.buffer.On("Vote", mock.Anything).Return(
-		func(vote *message.Vote) bool {
-			tally, hasVertex := p.voteDB[vote.VertexID]
-			if !hasVertex {
-				tally = make(map[model.Hash]*message.Vote)
-				p.voteDB[vote.VertexID] = tally
-			}
-			_, hasVote := tally[vote.SignerID]
-			if hasVote {
-				return false
-			}
-			tally[vote.SignerID] = vote
-			return true
-		},
-		func(vote *message.Vote) error {
-			tally, hasVertex := p.voteDB[vote.VertexID]
-			if !hasVertex {
-				return nil
-			}
-			duplicate, hasVote := tally[vote.SignerID]
-			if !hasVote {
-				return nil
-			}
-			if vote.VertexID == duplicate.VertexID {
-				return nil
-			}
-			return consensus.DoubleVote{First: duplicate, Second: vote}
-		},
-	)
-	p.buffer.On("Votes", mock.Anything).Return(
-		func(VertexID model.Hash) []*message.Vote {
-			var votes []*message.Vote
-			tally, tallied := p.voteDB[VertexID]
-			if tallied {
-				for _, vote := range tally {
-					votes = append(votes, vote)
-				}
-			}
-			return votes
-		},
-		nil,
-	)
-	p.buffer.On("Clear", mock.Anything).Return(
-		func(height uint64) error {
-			for VertexID, proposal := range p.proposalDB {
-				if proposal.Height <= height {
-					delete(p.voteDB, VertexID)
-					delete(p.vertexDB, VertexID)
-				}
-			}
-			for VertexID, tally := range p.voteDB {
-				for _, vote := range tally {
-					if vote.Height <= height {
-						delete(p.voteDB, VertexID)
-					}
-					break
-				}
-			}
-			return nil
-		},
-	)
 
 	// inject dependencies into processor
-	p.pro = consensus.NewProcessor(p.state, p.net, p.build, p.sign, p.verify, p.buffer)
+	p.pro = consensus.NewProcessor(p.state, p.net, p.build, p.sign, p.verify, p.buffer, p.vcache)
 
 	return &p
 }

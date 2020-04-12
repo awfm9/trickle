@@ -14,9 +14,10 @@ type Processor struct {
 	sign   Signer
 	verify Verifier
 	buffer Buffer
+	vcache VoteCache
 }
 
-func NewProcessor(state State, net Network, build Builder, sign Signer, verify Verifier, buffer Buffer) *Processor {
+func NewProcessor(state State, net Network, build Builder, sign Signer, verify Verifier, buffer Buffer, vcache VoteCache) *Processor {
 
 	pro := Processor{
 		state:  state,
@@ -25,6 +26,7 @@ func NewProcessor(state State, net Network, build Builder, sign Signer, verify V
 		sign:   sign,
 		verify: verify,
 		buffer: buffer,
+		vcache: vcache,
 	}
 
 	return &pro
@@ -126,7 +128,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	}
 
 	// clear the buffer for the voted vertex
-	err = pro.buffer.Clear(proposal.Height - 1)
+	err = pro.vcache.Clear(proposal.Height - 1)
 	if err != nil {
 		return fmt.Errorf("could not clear buffer: %w", err)
 	}
@@ -213,7 +215,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	}
 
 	// check if we already have a vote by this voter
-	fresh, err := pro.buffer.Vote(vote)
+	fresh, err := pro.vcache.Store(vote)
 	if err != nil {
 		return fmt.Errorf("could not tally vote: %w)", err)
 	}
@@ -228,7 +230,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	}
 
 	// get the votes for the given vertex
-	votes, err := pro.buffer.Votes(vote.VertexID)
+	votes, err := pro.vcache.Retrieve(vote.Height, vote.VertexID)
 	if err != nil {
 		return fmt.Errorf("could not get votes: %w", err)
 	}
