@@ -126,7 +126,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 				Str("message", "proposal").
 				Uint64("height", proposal.Height).
 				Hex("vertex", vertexID[:]).
-				Hex("parent", proposal.QC.VertexID[:]).
+				Hex("parent", proposal.Parent.VertexID[:]).
 				Hex("arc", proposal.ArcID[:]).
 				Hex("proposer", proposal.SignerID[:]).
 				Msg("proposal looped")
@@ -300,7 +300,7 @@ func (p *Participant) Run() error {
 			p.log.Debug().
 				Uint64("height", proposal.Height).
 				Hex("vertex", vertexID[:]).
-				Hex("parent", proposal.QC.VertexID[:]).
+				Hex("parent", proposal.Parent.VertexID[:]).
 				Hex("arc", proposal.ArcID[:]).
 				Hex("proposer", proposal.SignerID[:]).
 				Msg("proposal received")

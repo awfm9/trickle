@@ -8,7 +8,7 @@ import (
 
 func Genesis(t require.TestingT) *model.Vertex {
 	genesis := model.Vertex{
-		QC:       nil,
+		Parent:   nil,
 		Height:   0,
 		ArcID:    model.ZeroHash,
 		SignerID: model.ZeroHash,

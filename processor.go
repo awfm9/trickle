@@ -45,7 +45,7 @@ func (pro *Processor) Bootstrap(genesisID model.Hash) error {
 
 	// create the genesis vertex
 	genesis := model.Vertex{
-		QC:       nil,
+		Parent:   nil,
 		Height:   0,
 		ArcID:    genesisID,
 		SignerID: model.ZeroHash,
@@ -96,7 +96,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 		return InvalidProposer{Proposal: proposal, Leader: leaderID}
 	}
 
-	// check if the proposed vertex has a valid signature & QC
+	// check if the proposed vertex has a valid signature & Parent
 	err = pro.verify.Proposal(proposal)
 	if err != nil {
 		return fmt.Errorf("could not verify proposal: %w", err)
@@ -114,10 +114,10 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	// NOTE: we currently don't check if we have the parent, which allows us to
 	// skip ahead, even if we don't know the chain up to this point
 
-	// NOTE: we never check if the QC is on a vertex that is a valid extension of
+	// NOTE: we never check if the Parent is on a vertex that is a valid extension of
 	// the state; if it wasn't, the system would already be compromised, because
 	// we have a majority of validators voting for an invalid vertex - we can
-	// therefore simply jump to the height after the QC/parent
+	// therefore simply jump to the height after the Parent/parent
 
 	// set our state to the new height
 	err = pro.state.Set(proposal.Height)
@@ -252,11 +252,11 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 		return fmt.Errorf("could not build arc: %w", err)
 	}
 
-	// NOTE: this can create a QC for a vertex have not even seen yet;
+	// NOTE: this can create a Parent for a vertex have not even seen yet;
 	// however, with the majority voting for it, we should be able to rely on it
 
-	// create the QC for the new proposal
-	qc := model.QC{
+	// create the Parent for the new proposal
+	parent := model.Parent{
 		VertexID:  vote.VertexID,
 		SignerIDs: signerIDs,
 		Signature: signature,
@@ -265,7 +265,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	// create the vertex for the new proposal
 	vertex := model.Vertex{
 		Height: vote.Height + 1,
-		QC:     &qc,
+		Parent: &parent,
 		ArcID:  arcID,
 	}
 

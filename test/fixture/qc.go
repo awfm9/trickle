@@ -8,21 +8,21 @@ import (
 	"github.com/alvalor/consensus/model"
 )
 
-func QC(t require.TestingT, options ...func(*model.QC)) *model.QC {
-	qc := model.QC{
+func Parent(t require.TestingT, options ...func(*model.Parent)) *model.Parent {
+	parent := model.Parent{
 		Height:    rand.Uint64(),
 		VertexID:  Hash(t),
 		SignerIDs: Hashes(t, 3),
 		Signature: Sig(t),
 	}
 	for _, option := range options {
-		option(&qc)
+		option(&parent)
 	}
-	return &qc
+	return &parent
 }
 
-func WithHeight(height uint64) func(*model.QC) {
-	return func(qc *model.QC) {
-		qc.Height = height
+func WithHeight(height uint64) func(*model.Parent) {
+	return func(parent *model.Parent) {
+		parent.Height = height
 	}
 }

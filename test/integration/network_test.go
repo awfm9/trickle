@@ -34,7 +34,7 @@ func Network(t require.TestingT, participants ...*Participant) {
 				sender.log.Debug().
 					Uint64("height", proposal.Height).
 					Hex("vertex", vertexID[:]).
-					Hex("parent", proposal.QC.VertexID[:]).
+					Hex("parent", proposal.Parent.VertexID[:]).
 					Hex("arc", proposal.ArcID[:]).
 					Hex("proposer", proposal.SignerID[:]).
 					Msg("proposal broadcasted")

@@ -12,7 +12,7 @@ func Vertex(t require.TestingT, options ...func(*model.Vertex)) *model.Vertex {
 	height := rand.Uint64()
 	vertex := model.Vertex{
 		Height:   height,
-		QC:       QC(t, WithHeight(height-1)),
+		Parent:   Parent(t, WithHeight(height-1)),
 		ArcID:    Hash(t),
 		SignerID: Hash(t),
 	}
@@ -24,8 +24,8 @@ func Vertex(t require.TestingT, options ...func(*model.Vertex)) *model.Vertex {
 
 func WithParent(parent *model.Vertex) func(*model.Vertex) {
 	return func(vertex *model.Vertex) {
-		vertex.QC.Height = parent.Height
-		vertex.QC.VertexID = parent.ID()
+		vertex.Parent.Height = parent.Height
+		vertex.Parent.VertexID = parent.ID()
 		vertex.Height = parent.Height + 1
 	}
 }
