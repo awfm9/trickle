@@ -1,5 +1,7 @@
 # Alvalor Consensus
 
+[![Build Status](https://travis-ci.com/alvalor/consensus.svg?token=Hm9YEiz4aAfKiFLFh2sr&branch=master)](https://travis-ci.com/alvalor/consensus)
+
 ## Description
 
 Alvalor consensus implements a byzantine fault-tolerant (BFT) consensus algorithm, based on HotStuff.
