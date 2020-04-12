@@ -37,6 +37,7 @@ type Participant struct {
 	voteQ      chan *message.Vote
 
 	// real dependencies
+	pcache *cache.ProposalCache
 	vcache *cache.VoteCache
 
 	// dependency mocks
@@ -45,7 +46,6 @@ type Participant struct {
 	build  *mocks.Builder
 	sign   *mocks.Signer
 	verify *mocks.Verifier
-	buffer *mocks.Buffer
 
 	// processor instance
 	pro *consensus.Processor
@@ -74,6 +74,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		proposalQ:  make(chan *message.Proposal, 1024),
 		voteQ:      make(chan *message.Vote, 1024),
 
+		pcache: cache.NewProposalCache(),
 		vcache: cache.NewVoteCache(),
 
 		net:    &mocks.Network{},
@@ -81,7 +82,6 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		build:  &mocks.Builder{},
 		sign:   &mocks.Signer{},
 		verify: &mocks.Verifier{},
-		buffer: &mocks.Buffer{},
 	}
 
 	// apply the options
@@ -198,24 +198,8 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	p.verify.On("Proposal", mock.Anything).Return(nil)
 	p.verify.On("Vote", mock.Anything).Return(nil)
 
-	// program single-vertex buffer behaviour
-	p.buffer.On("Proposal", mock.Anything).Return(
-		func(proposal *message.Proposal) bool {
-			_, hasProposal := p.proposalDB[proposal.ID()]
-			return !hasProposal
-		},
-		func(proposal *message.Proposal) error {
-			for _, duplicate := range p.proposalDB {
-				if proposal.Height == duplicate.Height && proposal.SignerID == duplicate.SignerID {
-					return consensus.DoubleProposal{First: duplicate, Second: proposal}
-				}
-			}
-			return nil
-		},
-	)
-
 	// inject dependencies into processor
-	p.pro = consensus.NewProcessor(p.state, p.net, p.build, p.sign, p.verify, p.buffer, p.vcache)
+	p.pro = consensus.NewProcessor(p.state, p.net, p.build, p.sign, p.verify, p.pcache, p.vcache)
 
 	return &p
 }

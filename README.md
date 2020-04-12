@@ -18,7 +18,7 @@ Version 0.0.1
 
 Version 0.0.2
 
-- [ ] implement buffer component
+- [x] implement cache components
 - [ ] implement chain component
 - [ ] add state extension check
 - [ ] add vertex confirmation

@@ -13,11 +13,11 @@ type Processor struct {
 	build  Builder
 	sign   Signer
 	verify Verifier
-	buffer Buffer
+	pcache ProposalCache
 	vcache VoteCache
 }
 
-func NewProcessor(state State, net Network, build Builder, sign Signer, verify Verifier, buffer Buffer, vcache VoteCache) *Processor {
+func NewProcessor(state State, net Network, build Builder, sign Signer, verify Verifier, pcache ProposalCache, vcache VoteCache) *Processor {
 
 	pro := Processor{
 		state:  state,
@@ -25,7 +25,7 @@ func NewProcessor(state State, net Network, build Builder, sign Signer, verify V
 		build:  build,
 		sign:   sign,
 		verify: verify,
-		buffer: buffer,
+		pcache: pcache,
 		vcache: vcache,
 	}
 
@@ -105,7 +105,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	}
 
 	// check if we already had a proposal by this proposer
-	fresh, err := pro.buffer.Proposal(proposal)
+	fresh, err := pro.pcache.Store(proposal)
 	if err != nil {
 		return fmt.Errorf("could not buffer proposal: %w", err)
 	}
@@ -127,10 +127,16 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 		return fmt.Errorf("could not transition round: %w", err)
 	}
 
-	// clear the buffer for the voted vertex
+	// clear the cache for votes up to the confirmed height
 	err = pro.vcache.Clear(proposal.Height - 1)
 	if err != nil {
-		return fmt.Errorf("could not clear buffer: %w", err)
+		return fmt.Errorf("could not clear vote cache: %w", err)
+	}
+
+	// clear the cache for proposals up to the confirmed height
+	err = pro.pcache.Clear(proposal.Height - 1)
+	if err != nil {
+		return fmt.Errorf("could not clear proposal cache: %w", err)
 	}
 
 	// TODO: check if the proposed vertex is a valid extension of the state

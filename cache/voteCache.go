@@ -8,10 +8,14 @@ import (
 	"github.com/alvalor/consensus/model"
 )
 
+// VoteCache keeps track of votes per height on the first level, and votes per
+// signer on the second level. It detects double votes of the same signer on
+// two different vertices at the same height.
 type VoteCache struct {
 	voteLookups map[uint64](map[model.Hash]*message.Vote)
 }
 
+// NewVoteCache creates a new vote cache with initialized map.
 func NewVoteCache() *VoteCache {
 	vc := VoteCache{
 		voteLookups: make(map[uint64](map[model.Hash]*message.Vote)),
@@ -52,8 +56,8 @@ func (vc *VoteCache) Store(vote *message.Vote) (bool, error) {
 func (vc *VoteCache) Retrieve(height uint64, vertexID model.Hash) ([]*message.Vote, error) {
 
 	// get the votes registered for this height
-	voteLookup, hasVertex := vc.voteLookups[height]
-	if !hasVertex {
+	voteLookup, exists := vc.voteLookups[height]
+	if !exists {
 		return nil, fmt.Errorf("height unknown (%x)", height)
 	}
 
