@@ -8,7 +8,9 @@ Alvalor consensus implements a byzantine fault-tolerant (BFT) consensus algorith
 
 ## Roadmap
 
-### Milestone 1 - PoC (v0.0.1)
+### Milestone 1 - PoC
+
+Version 0.0.1
 
 - event-driven consensus logic
 - no liveness mechanism for leader
@@ -16,43 +18,58 @@ Alvalor consensus implements a byzantine fault-tolerant (BFT) consensus algorith
 - no cryptographic primitives
 - no verification against graph
 
-### Milestone 2 - MVP (v0.0.2)
+### Milestone 2 - MVP
+
+Version 0.0.2
 
 - implement buffer component
 - implement chain component
 - add state extension check
 - add finalization of vertices
 
-### Milestone 3 - Cryptography (v0.0.3)
+### Milestone 3 - Cryptography
+
+Version 0.0.3
 
 - implement signature component
 - implement verification component
 - add identity set for participants
 - add signature creation & checking
 
-### Milestone X - Randomness (v0.0.4)
+### Milestone 4 - Randomness
 
-- add entropy to vertices
-- add threshold signatures
+Version 0.0.4
 
-### Milestone X - Liveness (v0.1.0)
+- add threshold key share generation
+- add threshold signature shares to votes
+- add threshold signature to vertices
+
+### Milestone 5 - Liveness
+
+Version 0.1.0
 
 - add depth concept to vertices
 - add timeout mechanism for leader
 
-### Milestone X - Incentives (v0.2.0)
+### Milestone X - Incentives
+
+Version 0.2.0
 
 - add native economic token ledger
 - add transaction fee distribution
 - add slashing challenges
 
-### Milestone X - Committee (v0.3.0)
+### Milestone X - Committee
+
+Version 0.3.0
 
 - add checkpoints / epochs
 - add staking / unstaking
 - add validator token auctions
 - add validator token buybacks
 
-### Miscellaneous (to be decided)
+### Miscellaneous
+
+Version x.x.x
 
 - add stake delegation
