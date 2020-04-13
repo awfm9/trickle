@@ -12,16 +12,18 @@ Alvalor consensus implements a byzantine fault-tolerant (BFT) consensus algorith
 
 Version 0.0.1
 
-- [x] event-driven consensus logic
+- [x] implement consensus logic
+- [x] implement simulated network
 
 ### Milestone 2 - MVP
 
 Version 0.0.2
 
 - [x] implement cache components
-- [ ] implement graph component
-- [ ] add state extension check
-- [ ] add vertex confirmation
+- [x] implement simulated graph
+- [x] implement naive strategy
+- [x] add graph extension
+- [x] add vertex confirmation
 
 ### Milestone 3 - Cryptography
 

@@ -10,8 +10,8 @@ import (
 type Processor struct {
 	net    Network
 	graph  Graph
-	state  State
 	build  Builder
+	strat  Strategy
 	sign   Signer
 	verify Verifier
 	pcache ProposalCache
@@ -19,13 +19,13 @@ type Processor struct {
 	Round  uint64
 }
 
-func NewProcessor(net Network, graph Graph, state State, build Builder, sign Signer, verify Verifier, pcache ProposalCache, vcache VoteCache) *Processor {
+func NewProcessor(net Network, graph Graph, build Builder, strat Strategy, sign Signer, verify Verifier, pcache ProposalCache, vcache VoteCache) *Processor {
 
 	pro := Processor{
 		net:    net,
 		graph:  graph,
-		state:  state,
 		build:  build,
+		strat:  strat,
 		sign:   sign,
 		verify: verify,
 		pcache: pcache,
@@ -64,7 +64,7 @@ func (pro *Processor) Bootstrap(arcID model.Hash) error {
 	}
 
 	// get the collector of the genesis round
-	collectorID, err := pro.state.Leader(root.Height + 1)
+	collectorID, err := pro.strat.Collector(root.Height)
 	if err != nil {
 		return fmt.Errorf("could not get collector: %w", err)
 	}
@@ -87,7 +87,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	}
 
 	// get the proposer at the proposal height
-	leaderID, err := pro.state.Leader(proposal.Height)
+	leaderID, err := pro.strat.Leader(proposal.Height)
 	if err != nil {
 		return fmt.Errorf("could not get proposer: %w", err)
 	}
@@ -163,7 +163,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	}
 
 	// get the collector for the proposal round
-	collectorID, err := pro.state.Leader(proposal.Height + 1)
+	collectorID, err := pro.strat.Collector(proposal.Height)
 	if err != nil {
 		return fmt.Errorf("could not get collector: %w", err)
 	}
@@ -224,7 +224,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	}
 
 	// get the collector for the vote
-	collectorID, err := pro.state.Leader(vote.Height + 1)
+	collectorID, err := pro.strat.Collector(vote.Height)
 	if err != nil {
 		return fmt.Errorf("could not get vote collector: %w", err)
 	}
@@ -250,7 +250,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	}
 
 	// get the threshold (for all rounds currently)
-	threshold, err := pro.state.Threshold()
+	threshold, err := pro.strat.Threshold(vote.Height)
 	if err != nil {
 		return fmt.Errorf("could not get threshold: %w", err)
 	}

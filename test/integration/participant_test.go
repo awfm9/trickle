@@ -3,7 +3,6 @@ package integration
 import (
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -15,6 +14,7 @@ import (
 	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/mocks"
 	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/strategy"
 	"github.com/alvalor/consensus/test/fixture"
 )
 
@@ -38,13 +38,13 @@ type Participant struct {
 	voteQ         chan *message.Vote
 
 	// real dependencies
-	pcache *cache.ProposalCache
-	vcache *cache.VoteCache
+	strat  consensus.Strategy
+	pcache consensus.ProposalCache
+	vcache consensus.VoteCache
 
 	// dependency mocks
 	net    *mocks.Network
 	graph  *mocks.Graph
-	state  *mocks.State
 	build  *mocks.Builder
 	sign   *mocks.Signer
 	verify *mocks.Verifier
@@ -77,12 +77,8 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		proposalQ:     make(chan *message.Proposal, 1024),
 		voteQ:         make(chan *message.Vote, 1024),
 
-		pcache: cache.NewProposalCache(),
-		vcache: cache.NewVoteCache(),
-
 		net:    &mocks.Network{},
 		graph:  &mocks.Graph{},
-		state:  &mocks.State{},
 		build:  &mocks.Builder{},
 		sign:   &mocks.Signer{},
 		verify: &mocks.Verifier{},
@@ -92,6 +88,11 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	for _, option := range options {
 		option(&p)
 	}
+
+	// initialize the real dependencies
+	p.strat = strategy.NewNaive(p.participantIDs)
+	p.pcache = cache.NewProposalCache()
+	p.vcache = cache.NewVoteCache()
 
 	// program loopback network mock behaviour
 	p.net.On("Broadcast", mock.Anything).Return(
@@ -172,25 +173,6 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		},
 	)
 
-	// program round-robin state behaviour
-	p.state.On("Leader", mock.Anything).Return(
-		func(height uint64) model.Hash {
-			src := rand.NewSource(int64(height))
-			r := rand.New(src)
-			index := r.Intn(len(p.participantIDs))
-			leader := p.participantIDs[index]
-			return leader
-		},
-		nil,
-	)
-	p.state.On("Threshold", mock.Anything).Return(
-		func() uint {
-			threshold := uint(len(p.participantIDs) * 2 / 3)
-			return threshold
-		},
-		nil,
-	)
-
 	// program random builder behaviour
 	p.build.On("Arc").Return(
 		func() model.Hash {
@@ -235,7 +217,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	p.verify.On("Vote", mock.Anything).Return(nil)
 
 	// inject dependencies into processor
-	p.pro = consensus.NewProcessor(p.net, p.graph, p.state, p.build, p.sign, p.verify, p.pcache, p.vcache)
+	p.pro = consensus.NewProcessor(p.net, p.graph, p.build, p.strat, p.sign, p.verify, p.pcache, p.vcache)
 
 	return &p
 }
