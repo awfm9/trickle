@@ -23,7 +23,7 @@ func TestSingularSet(t *testing.T) {
 		WithGenesis(model.ZeroHash),
 		WithIgnore(),
 		WithStop(
-			AfterRound(4096, errFinished),
+			AfterRound(2048, errFinished),
 			AfterDelay(8*time.Second, errTimeout),
 		),
 	)
@@ -99,8 +99,8 @@ func TestSmallSet(t *testing.T) {
 			WithSelf(selfID),
 			WithParticipants(participantIDs),
 			WithStop(
-				AfterRound(512, errFinished),
-				AfterDelay(8*time.Second, errTimeout),
+				AfterRound(256, errFinished),
+				AfterDelay(32*time.Second, errTimeout),
 			),
 		)
 		participants = append(participants, p)
@@ -143,7 +143,7 @@ func TestBigSet(t *testing.T) {
 			WithSelf(selfID),
 			WithParticipants(participantIDs),
 			WithStop(
-				AfterRound(32, errFinished),
+				AfterRound(4, errFinished),
 				AfterDelay(8*time.Second, errTimeout),
 			),
 		)

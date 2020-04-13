@@ -7,22 +7,40 @@ import (
 	"github.com/alvalor/consensus/model"
 )
 
+type ConflictingProposal struct {
+	Proposal *message.Proposal
+	Final    uint64
+}
+
+func (cv ConflictingProposal) Error() string {
+	return fmt.Sprintf("conflicting proposal (height: %d, final: %d)", cv.Proposal.Height, cv.Final)
+}
+
 type ObsoleteProposal struct {
 	Proposal *message.Proposal
-	Round    uint64
+	Cutoff   uint64
 }
 
 func (op ObsoleteProposal) Error() string {
-	return fmt.Sprintf("obsolete proposal (height: %d, round: %d)", op.Proposal.Height, op.Round)
+	return fmt.Sprintf("obsolete proposal (height: %d, cutoff: %d)", op.Proposal.Height, op.Cutoff)
+}
+
+type ConflictingVote struct {
+	Vote  *message.Vote
+	Final uint64
+}
+
+func (cv ConflictingVote) Error() string {
+	return fmt.Sprintf("conflicting vote (height: %d, final: %d)", cv.Vote.Height, cv.Final)
 }
 
 type ObsoleteVote struct {
-	Vote  *message.Vote
-	Round uint64
+	Vote   *message.Vote
+	Cutoff uint64
 }
 
 func (ov ObsoleteVote) Error() string {
-	return fmt.Sprintf("obsolete vote (height: %d, round: %d)", ov.Vote.Height, ov.Round)
+	return fmt.Sprintf("obsolete vote (height: %d, cutoff: %d)", ov.Vote.Height, ov.Cutoff)
 }
 
 type InvalidProposer struct {

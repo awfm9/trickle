@@ -16,6 +16,7 @@ type Processor struct {
 	verify Verifier
 	pcache ProposalCache
 	vcache VoteCache
+	Round  uint64
 }
 
 func NewProcessor(net Network, graph Graph, state State, build Builder, sign Signer, verify Verifier, pcache ProposalCache, vcache VoteCache) *Processor {
@@ -29,6 +30,7 @@ func NewProcessor(net Network, graph Graph, state State, build Builder, sign Sig
 		verify: verify,
 		pcache: pcache,
 		vcache: vcache,
+		Round:  0,
 	}
 
 	return &pro
@@ -36,9 +38,8 @@ func NewProcessor(net Network, graph Graph, state State, build Builder, sign Sig
 
 func (pro *Processor) Bootstrap(arcID model.Hash) error {
 
-	// get current graph tip
-	round, err := pro.graph.Round()
-	if round != 0 {
+	// check if we are still at zero round
+	if pro.Round != 0 {
 		return fmt.Errorf("graph round not zero")
 	}
 
@@ -51,7 +52,7 @@ func (pro *Processor) Bootstrap(arcID model.Hash) error {
 	}
 
 	// extend the graph with the root
-	err = pro.graph.Extend(&root)
+	err := pro.graph.Extend(&root)
 	if err != nil {
 		return fmt.Errorf("could not extend graph with root: %w", err)
 	}
@@ -79,15 +80,10 @@ func (pro *Processor) Bootstrap(arcID model.Hash) error {
 
 func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
-	// get the current graph height
-	round, err := pro.graph.Round()
-	if err != nil {
-		return fmt.Errorf("could not get round: %w", err)
-	}
-
-	// check if the proposal is not outdated
-	if proposal.Height < round {
-		return ObsoleteProposal{Proposal: proposal, Round: round}
+	// check if the proposal falls within the finalized state
+	final, exists := pro.graph.Final()
+	if exists && proposal.Height <= final.Height {
+		return ConflictingProposal{Proposal: proposal, Final: final.Height}
 	}
 
 	// get the proposer at the proposal height
@@ -101,13 +97,13 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 		return InvalidProposer{Proposal: proposal, Leader: leaderID}
 	}
 
-	// check if the proposed vertex has a valid signature & Parent
+	// check if the proposed vertex has valid signature and parent
 	err = pro.verify.Proposal(proposal)
 	if err != nil {
 		return fmt.Errorf("could not verify proposal: %w", err)
 	}
 
-	// check if we already had a proposal by this proposer
+	// check if we already had a proposal by this proposer at this height
 	fresh, err := pro.pcache.Store(proposal)
 	if err != nil {
 		return fmt.Errorf("could not buffer proposal: %w", err)
@@ -116,10 +112,15 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 		return nil
 	}
 
+	// set the current round if the confirmed height increased
+	if proposal.Height > pro.Round {
+		pro.Round = proposal.Height
+	}
+
 	// NOTE: We currently don't check if we have the parent, which allows us to
 	// skip ahead, even if we don't know the chain up to this point.
 
-	// NOTE: We. never check if the parent is on a vertex that is a valid
+	// NOTE: We never check if the parent is on a vertex that is a valid
 	// extension of the state; if it wasn't, the system would already be
 	// compromised. This allows us to skip ahead to the next height regardless
 	// of the validity of the new proposal.
@@ -146,6 +147,13 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	err = pro.graph.Extend(proposal.Vertex)
 	if err != nil {
 		return fmt.Errorf("could not extend graph: %w", err)
+	}
+
+	// check that the proposal is not already outdated; we don't want to vote
+	// on proposals that are already worse than a pending proposal with majority
+	cutoff := pro.Round
+	if proposal.Height < cutoff {
+		return ObsoleteProposal{Proposal: proposal, Cutoff: cutoff}
 	}
 
 	// get own ID to compare against collector and leader
@@ -193,15 +201,20 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
 func (pro *Processor) OnVote(vote *message.Vote) error {
 
-	// get the current graph tip
-	round, err := pro.graph.Round()
-	if err != nil {
-		return fmt.Errorf("could not get height: %w", err)
+	// check if the vote falls within the finalized state
+	final, exists := pro.graph.Final()
+	if exists && vote.Height <= final.Height {
+		return ConflictingVote{Vote: vote, Final: final.Height}
 	}
 
-	// check that the vote is not outdated
-	if vote.Height < round {
-		return ObsoleteVote{Vote: vote, Round: round}
+	// check if the vote is already outdated; we don't want to build proposals
+	// that, even if they get a majority, are already behind another path
+	cutoff := pro.Round - 1
+	if cutoff > pro.Round {
+		cutoff = pro.Round
+	}
+	if vote.Height < cutoff {
+		return ObsoleteVote{Vote: vote, Cutoff: cutoff}
 	}
 
 	// get own ID to compare against collector
@@ -289,6 +302,9 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	if err != nil {
 		return fmt.Errorf("could not create proposal: %w", err)
 	}
+
+	// we trust our proposal, so we set the new round redundantly here
+	pro.Round = proposal.Height
 
 	// broadcast the proposal to the network
 	// NOTE: the network module should short-circuit one copy of this messae to

@@ -40,22 +40,24 @@ func (_m *Graph) Extend(vertex *model.Vertex) error {
 	return r0
 }
 
-// Round provides a mock function with given fields:
-func (_m *Graph) Round() (uint64, error) {
+// Final provides a mock function with given fields:
+func (_m *Graph) Final() (*model.Vertex, bool) {
 	ret := _m.Called()
 
-	var r0 uint64
-	if rf, ok := ret.Get(0).(func() uint64); ok {
+	var r0 *model.Vertex
+	if rf, ok := ret.Get(0).(func() *model.Vertex); ok {
 		r0 = rf()
 	} else {
-		r0 = ret.Get(0).(uint64)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.Vertex)
+		}
 	}
 
-	var r1 error
-	if rf, ok := ret.Get(1).(func() error); ok {
+	var r1 bool
+	if rf, ok := ret.Get(1).(func() bool); ok {
 		r1 = rf()
 	} else {
-		r1 = ret.Error(1)
+		r1 = ret.Get(1).(bool)
 	}
 
 	return r0, r1

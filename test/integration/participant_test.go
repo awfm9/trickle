@@ -29,7 +29,7 @@ type Participant struct {
 	ignore         []error
 
 	// state data
-	round         uint64
+	final         *model.Vertex
 	confirmations map[model.Hash]uint
 	vertexDB      map[model.Hash]*model.Vertex
 	proposalDB    map[model.Hash]*message.Proposal
@@ -69,7 +69,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		stop:           []Condition{AfterRound(10, errFinished)},
 		ignore:         []error{consensus.ObsoleteProposal{}, consensus.ObsoleteVote{}},
 
-		round:         0,
+		final:         nil,
 		confirmations: make(map[model.Hash]uint),
 		vertexDB:      make(map[model.Hash]*model.Vertex),
 		proposalDB:    make(map[model.Hash]*message.Proposal),
@@ -126,20 +126,10 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	)
 
 	// program simple graph behaviour
-	p.graph.On("Round").Return(
-		func() uint64 {
-			return p.round
-		},
-		nil,
-	)
 	p.graph.On("Extend", mock.Anything).Return(
 		func(vertex *model.Vertex) error {
-			pending := p.round - 2
-			if pending > p.round {
-				pending = 0
-			}
-			if vertex.Height < pending {
-				return fmt.Errorf("vertex in finalized state")
+			if p.final != nil && vertex.Height <= p.final.Height {
+				return fmt.Errorf("vertex conflicts with finalized state")
 			}
 			p.vertexDB[vertex.ID()] = vertex
 			return nil
@@ -151,10 +141,34 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 			if !hasVertex {
 				return fmt.Errorf("could not find vertex (%x)", vertexID)
 			}
-			if vertex.Height >= p.round {
-				p.round = vertex.Height + 1
+			p.confirmations[vertexID]++
+			if p.confirmations[vertexID] < 3 {
+				return nil
+			}
+			if p.final == nil {
+				p.final = vertex
+				return nil
+			}
+			if vertex.Height < p.final.Height {
+				return nil
+			}
+			if vertex.Height > p.final.Height {
+				p.final = vertex
+				return nil
+			}
+			if p.confirmations[vertexID] > p.confirmations[p.final.ID()] {
+				p.final = vertex
+				return nil
 			}
 			return nil
+		},
+	)
+	p.graph.On("Final").Return(
+		func() *model.Vertex {
+			return p.final
+		},
+		func() bool {
+			return p.final != nil
 		},
 	)
 
