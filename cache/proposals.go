@@ -6,16 +6,16 @@ import (
 	"github.com/alvalor/consensus/model"
 )
 
-// ProposalCache stores proposals by height at the first level and by proposer
+// Proposals stores proposals by height at the first level and by proposer
 // at the second level. It detects two different proposal's by the same signer
 // at the same height.
-type ProposalCache struct {
+type Proposals struct {
 	proposalLookups map[uint64](map[model.Hash]*message.Proposal)
 }
 
-// NewProposalCache creates a new proposal cache with initialized map.
-func NewProposalCache() *ProposalCache {
-	pc := ProposalCache{
+// ForProposals creates a new proposal cache with initialized map.
+func ForProposals() *Proposals {
+	pc := Proposals{
 		proposalLookups: make(map[uint64](map[model.Hash]*message.Proposal)),
 	}
 	return &pc
@@ -24,7 +24,7 @@ func NewProposalCache() *ProposalCache {
 // Store will store the proposal for the height at which it was made. We don't
 // check if multiple people propose at a height, because we alredy check that
 // in our business logic and create an invalid proposer error.
-func (pc *ProposalCache) Store(proposal *message.Proposal) (bool, error) {
+func (pc *Proposals) Store(proposal *message.Proposal) (bool, error) {
 
 	// get the proposal lookup for signers who have proposed at this height
 	proposalLookup, exists := pc.proposalLookups[proposal.Height]
@@ -51,7 +51,7 @@ func (pc *ProposalCache) Store(proposal *message.Proposal) (bool, error) {
 }
 
 // Clear will drop all proposals at or below the given cutoff.
-func (pc *ProposalCache) Clear(cutoff uint64) error {
+func (pc *Proposals) Clear(cutoff uint64) error {
 	for height := range pc.proposalLookups {
 		if height <= cutoff {
 			delete(pc.proposalLookups, height)

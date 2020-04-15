@@ -12,7 +12,7 @@ func Vertex(t require.TestingT, options ...func(*model.Vertex)) *model.Vertex {
 	height := rand.Uint64()
 	vertex := model.Vertex{
 		Height:   height,
-		Parent:   Parent(t, WithHeight(height-1)),
+		Parent:   Reference(t, WithHeight(height-1)),
 		ArcID:    Hash(t),
 		SignerID: Hash(t),
 	}

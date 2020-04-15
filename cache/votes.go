@@ -8,16 +8,16 @@ import (
 	"github.com/alvalor/consensus/model"
 )
 
-// VoteCache keeps track of votes per height on the first level, and votes per
+// Votes keeps track of votes per height on the first level, and votes per
 // signer on the second level. It detects double votes of the same signer on
 // two different vertices at the same height.
-type VoteCache struct {
+type Votes struct {
 	voteLookups map[uint64](map[model.Hash]*message.Vote)
 }
 
-// NewVoteCache creates a new vote cache with initialized map.
-func NewVoteCache() *VoteCache {
-	vc := VoteCache{
+// ForVotes creates a new vote cache with initialized map.
+func ForVotes() *Votes {
+	vc := Votes{
 		voteLookups: make(map[uint64](map[model.Hash]*message.Vote)),
 	}
 	return &vc
@@ -26,7 +26,7 @@ func NewVoteCache() *VoteCache {
 // Store will store the vote. Currently, we group them by height, as there
 // should be no vertex mismatch between votes at the same height. Otherwise, the
 // leader for the round send a double proposal, which should have been detected.
-func (vc *VoteCache) Store(vote *message.Vote) (bool, error) {
+func (vc *Votes) Store(vote *message.Vote) (bool, error) {
 
 	// get the vote lookup for signers who have voted at this height
 	voteLookup, exists := vc.voteLookups[vote.Height]
@@ -53,7 +53,7 @@ func (vc *VoteCache) Store(vote *message.Vote) (bool, error) {
 }
 
 // Retrieve gets the votes at a given height for a given vertex.
-func (vc *VoteCache) Retrieve(height uint64, vertexID model.Hash) ([]*message.Vote, error) {
+func (vc *Votes) Retrieve(height uint64, vertexID model.Hash) ([]*message.Vote, error) {
 
 	// get the votes registered for this height
 	voteLookup, exists := vc.voteLookups[height]
@@ -74,7 +74,7 @@ func (vc *VoteCache) Retrieve(height uint64, vertexID model.Hash) ([]*message.Vo
 }
 
 // Clear will drop all votes at or below the given cutoff, regardless of vertex.
-func (vc *VoteCache) Clear(cutoff uint64) error {
+func (vc *Votes) Clear(cutoff uint64) error {
 	for height := range vc.voteLookups {
 		if height <= cutoff {
 			delete(vc.voteLookups, height)

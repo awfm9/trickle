@@ -39,9 +39,9 @@ type Participant struct {
 	voteQ         chan *message.Vote
 
 	// real dependencies
-	strat  consensus.Strategy
-	pcache consensus.ProposalCache
-	vcache consensus.VoteCache
+	strat     consensus.Strategy
+	proposals consensus.ProposalCache
+	votes     consensus.VoteCache
 
 	// dependency mocks
 	net    *mocks.Network
@@ -92,8 +92,8 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 
 	// initialize the real dependencies
 	p.strat = strategy.NewNaive(p.participantIDs)
-	p.pcache = cache.NewProposalCache()
-	p.vcache = cache.NewVoteCache()
+	p.proposals = cache.ForProposals()
+	p.votes = cache.ForVotes()
 
 	// program loopback network mock behaviour
 	p.net.On("Broadcast", mock.Anything).Return(
@@ -218,7 +218,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	p.verify.On("Vote", mock.Anything).Return(nil)
 
 	// inject dependencies into processor
-	p.pro = consensus.NewProcessor(p.net, p.graph, p.build, p.strat, p.sign, p.verify, p.pcache, p.vcache)
+	p.pro = consensus.NewProcessor(p.net, p.graph, p.build, p.strat, p.sign, p.verify, p.proposals, p.votes)
 
 	return &p
 }

@@ -9,29 +9,29 @@ import (
 )
 
 type Processor struct {
-	net    Network
-	graph  Graph
-	build  Builder
-	strat  Strategy
-	sign   Signer
-	verify Verifier
-	pcache ProposalCache
-	vcache VoteCache
-	Round  uint64
+	net       Network
+	graph     Graph
+	build     Builder
+	strat     Strategy
+	sign      Signer
+	verify    Verifier
+	proposals ProposalCache
+	votes     VoteCache
+	Round     uint64
 }
 
-func NewProcessor(net Network, graph Graph, build Builder, strat Strategy, sign Signer, verify Verifier, pcache ProposalCache, vcache VoteCache) *Processor {
+func NewProcessor(net Network, graph Graph, build Builder, strat Strategy, sign Signer, verify Verifier, proposals ProposalCache, votes VoteCache) *Processor {
 
 	pro := Processor{
-		net:    net,
-		graph:  graph,
-		build:  build,
-		strat:  strat,
-		sign:   sign,
-		verify: verify,
-		pcache: pcache,
-		vcache: vcache,
-		Round:  0,
+		net:       net,
+		graph:     graph,
+		build:     build,
+		strat:     strat,
+		sign:      sign,
+		verify:    verify,
+		proposals: proposals,
+		votes:     votes,
+		Round:     0,
 	}
 
 	return &pro
@@ -105,7 +105,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	}
 
 	// check if we already had a proposal by this proposer at this height
-	fresh, err := pro.pcache.Store(proposal)
+	fresh, err := pro.proposals.Store(proposal)
 	if err != nil {
 		return fmt.Errorf("could not buffer proposal: %w", err)
 	}
@@ -133,13 +133,13 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	}
 
 	// clear the cache for votes up to the confirmed height
-	err = pro.vcache.Clear(proposal.Parent.Height)
+	err = pro.votes.Clear(proposal.Parent.Height)
 	if err != nil {
 		return fmt.Errorf("could not clear vote cache: %w", err)
 	}
 
 	// clear the cache for proposals up to the confirmed height
-	err = pro.pcache.Clear(proposal.Parent.Height)
+	err = pro.proposals.Clear(proposal.Parent.Height)
 	if err != nil {
 		return fmt.Errorf("could not clear proposal cache: %w", err)
 	}
@@ -242,7 +242,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	}
 
 	// check if we already have a vote by this voter
-	fresh, err := pro.vcache.Store(vote)
+	fresh, err := pro.votes.Store(vote)
 	if err != nil {
 		return fmt.Errorf("could not tally vote: %w)", err)
 	}
@@ -257,7 +257,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	}
 
 	// get the votes for the given vertex
-	votes, err := pro.vcache.Retrieve(vote.Height, vote.VertexID)
+	votes, err := pro.votes.Retrieve(vote.Height, vote.VertexID)
 	if err != nil {
 		return fmt.Errorf("could not get votes: %w", err)
 	}
@@ -285,7 +285,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	// however, with the majority voting for it, we should be able to rely on it
 
 	// create the Parent for the new proposal
-	parent := model.Parent{
+	parent := model.Reference{
 		VertexID:  vote.VertexID,
 		SignerIDs: signerIDs,
 		Signature: signature,
