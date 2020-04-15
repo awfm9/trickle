@@ -1,4 +1,4 @@
-package consensus
+package errors
 
 import (
 	"fmt"

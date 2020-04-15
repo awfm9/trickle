@@ -3,7 +3,7 @@ package cache
 import (
 	"fmt"
 
-	"github.com/alvalor/consensus"
+	"github.com/alvalor/consensus/errors"
 	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/model"
 )
@@ -39,7 +39,7 @@ func (vc *VoteCache) Store(vote *message.Vote) (bool, error) {
 	// match, we have a double vote error for this signer
 	duplicate, hasVoted := voteLookup[vote.SignerID]
 	if hasVoted && duplicate.VertexID != vote.VertexID {
-		return false, consensus.DoubleVote{First: duplicate, Second: vote}
+		return false, errors.DoubleVote{First: duplicate, Second: vote}
 	}
 
 	// otherwise, if the voter hasn't voted yet, we should store the vote

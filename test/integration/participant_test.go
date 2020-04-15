@@ -11,6 +11,7 @@ import (
 
 	"github.com/alvalor/consensus"
 	"github.com/alvalor/consensus/cache"
+	"github.com/alvalor/consensus/errors"
 	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/mocks"
 	"github.com/alvalor/consensus/model"
@@ -67,7 +68,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		participantIDs: []model.Hash{selfID},
 		genesisID:      model.ZeroHash,
 		stop:           []Condition{AfterRound(10, errFinished)},
-		ignore:         []error{consensus.ObsoleteProposal{}, consensus.ObsoleteVote{}},
+		ignore:         []error{errors.ObsoleteProposal{}, errors.ObsoleteVote{}},
 
 		final:         nil,
 		confirmations: make(map[model.Hash]uint),

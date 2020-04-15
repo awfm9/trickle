@@ -3,6 +3,7 @@ package consensus
 import (
 	"fmt"
 
+	"github.com/alvalor/consensus/errors"
 	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/model"
 )
@@ -83,7 +84,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	// check if the proposal falls within the finalized state
 	final, exists := pro.graph.Final()
 	if exists && proposal.Height <= final.Height {
-		return ConflictingProposal{Proposal: proposal, Final: final.Height}
+		return errors.ConflictingProposal{Proposal: proposal, Final: final.Height}
 	}
 
 	// get the proposer at the proposal height
@@ -94,7 +95,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
 	// check if the proposal is signed by correct proposer
 	if proposal.SignerID != leaderID {
-		return InvalidProposer{Proposal: proposal, Leader: leaderID}
+		return errors.InvalidProposer{Proposal: proposal, Leader: leaderID}
 	}
 
 	// check if the proposed vertex has valid signature and parent
@@ -153,7 +154,7 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	// on proposals that are already worse than a pending proposal with majority
 	cutoff := pro.Round
 	if proposal.Height < cutoff {
-		return ObsoleteProposal{Proposal: proposal, Cutoff: cutoff}
+		return errors.ObsoleteProposal{Proposal: proposal, Cutoff: cutoff}
 	}
 
 	// get own ID to compare against collector and leader
@@ -204,7 +205,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 	// check if the vote falls within the finalized state
 	final, exists := pro.graph.Final()
 	if exists && vote.Height <= final.Height {
-		return ConflictingVote{Vote: vote, Final: final.Height}
+		return errors.ConflictingVote{Vote: vote, Final: final.Height}
 	}
 
 	// check if the vote is already outdated; we don't want to build proposals
@@ -214,7 +215,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 		cutoff = pro.Round
 	}
 	if vote.Height < cutoff {
-		return ObsoleteVote{Vote: vote, Cutoff: cutoff}
+		return errors.ObsoleteVote{Vote: vote, Cutoff: cutoff}
 	}
 
 	// get own ID to compare against collector
@@ -231,7 +232,7 @@ func (pro *Processor) OnVote(vote *message.Vote) error {
 
 	// check if we are the collector for the round
 	if collectorID != selfID {
-		return InvalidCollector{Vote: vote, Collector: collectorID, Receiver: selfID}
+		return errors.InvalidCollector{Vote: vote, Collector: collectorID, Receiver: selfID}
 	}
 
 	// check if the vote has a valid signature

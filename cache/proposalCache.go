@@ -1,7 +1,7 @@
 package cache
 
 import (
-	"github.com/alvalor/consensus"
+	"github.com/alvalor/consensus/errors"
 	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/model"
 )
@@ -37,7 +37,7 @@ func (pc *ProposalCache) Store(proposal *message.Proposal) (bool, error) {
 	// doesn't match, we have a double proposal error for this signer
 	duplicate, hasProposed := proposalLookup[proposal.SignerID]
 	if hasProposed && duplicate.Vertex.ID() != proposal.Vertex.ID() {
-		return false, consensus.DoubleProposal{First: duplicate, Second: proposal}
+		return false, errors.DoubleProposal{First: duplicate, Second: proposal}
 	}
 
 	// otherwise, if the proposer hasn't proposed yet, we should store the proposal
