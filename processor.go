@@ -16,6 +16,7 @@ type Processor struct {
 	sign   Signer
 	verify Verifier
 	cache  Cache
+	loop   Looper
 }
 
 func NewProcessor(net Network, graph Graph, build Builder, strat Strategy, sign Signer, verify Verifier, cache Cache) *Processor {
@@ -238,15 +239,7 @@ func (pro *Processor) extractVote(proposal *message.Proposal) error {
 	// if we are the collector, process the proposer's vote immediately to give
 	// it priority and to make sure that a proposal is generated if the
 	// proposer's vote is the only one required to have a qualified majority
-	err = pro.OnVote(proposal.Vote())
-	if err != nil {
-		return fmt.Errorf("could not process proposer vote: %w", err)
-	}
-
-	// NOTE: due to the fact that we shortcut the proposer vote here, including
-	// for our own proposals, and seeing how we also shortcut our own proposals
-	// for processing, this will create an infinite recursion if we are always
-	// both the proposer and the collector (such as in single-node networks)
+	pro.loop.Vote(proposal.Vote())
 
 	return nil
 }
@@ -281,10 +274,7 @@ func (pro *Processor) loopVote(candidate *base.Vertex) error {
 	if err != nil {
 		return fmt.Errorf("could not create vote: %w", err)
 	}
-	err = pro.OnVote(vote)
-	if err != nil {
-		return fmt.Errorf("could not process own vote: %w", err)
-	}
+	pro.loop.Vote(vote)
 
 	return nil
 }
@@ -415,19 +405,12 @@ func (pro *Processor) proposeCandidate(height uint64, parentID base.Hash) error 
 		ArcID:      arcID,
 	}
 
-	// 3) crate & process the proposal locally
+	// 3) create the proposal and loop it back to ourselves for processing
 	proposal, err := pro.sign.Proposal(&candidate)
 	if err != nil {
 		return fmt.Errorf("could not create proposal: %w", err)
 	}
-	err = pro.OnProposal(proposal)
-	if err != nil {
-		return fmt.Errorf("could not process own proposal: %w", err)
-	}
-
-	// NOTE: due to the shortcut we take to process our own proposal here, and
-	// the shortcut we take to process the proposer vote, this will create an
-	// infinite recursion if we are always the proposer and the collector
+	pro.loop.Proposal(proposal)
 
 	// 4) broadcast the proposal to the network
 	err = pro.net.Broadcast(proposal)
