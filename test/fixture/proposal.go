@@ -10,6 +10,7 @@ import (
 func Proposal(t testing.TB, options ...func(*message.Proposal)) *message.Proposal {
 	proposal := message.Proposal{
 		Candidate: Vertex(t),
+		Quorum:    Quorum(t),
 		Signature: Sig(t),
 	}
 	for _, option := range options {

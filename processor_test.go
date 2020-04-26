@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -10,6 +11,7 @@ import (
 	"github.com/alvalor/consensus/mocks"
 	"github.com/alvalor/consensus/model/base"
 	"github.com/alvalor/consensus/model/message"
+	"github.com/alvalor/consensus/model/signal"
 	"github.com/alvalor/consensus/test/fixture"
 )
 
@@ -24,12 +26,13 @@ type ProcessorSuite struct {
 	self base.Hash
 
 	// parameters for graph mock
-	final *base.Vertex
-	tip   *base.Vertex
+	final   *base.Vertex
+	tip     *base.Vertex
+	staleID base.Hash
 
 	// parameters for strategy mock
-	leader    base.Hash
-	collector base.Hash
+	leaderID    base.Hash
+	collectorID base.Hash
 
 	// mocked dependencies
 	net    *mocks.Network
@@ -51,11 +54,13 @@ func (ps *ProcessorSuite) SetupTest() {
 
 	// parameters for the graph mock
 	ps.final = fixture.Vertex(ps.T())
-	ps.tip = fixture.Vertex(ps.T(), fixture.WithParent(ps.final))
+	between := fixture.Vertex(ps.T(), fixture.WithParent(ps.final))
+	ps.tip = fixture.Vertex(ps.T(), fixture.WithParent(between))
+	ps.staleID = fixture.Hash(ps.T())
 
 	// parameters for the strategy mock
-	ps.leader = fixture.Hash(ps.T())
-	ps.collector = fixture.Hash(ps.T())
+	ps.leaderID = fixture.Hash(ps.T())
+	ps.collectorID = fixture.Hash(ps.T())
 
 	// initialize the mocked dependencies
 	ps.net = &mocks.Network{}
@@ -72,7 +77,7 @@ func (ps *ProcessorSuite) SetupTest() {
 			return ps.self
 		},
 		nil,
-	)
+	).Maybe()
 	ps.sign.On("Vote", mock.Anything).Return(
 		func(candidate *base.Vertex) *message.Vote {
 			vote := message.Vote{
@@ -84,7 +89,7 @@ func (ps *ProcessorSuite) SetupTest() {
 			return &vote
 		},
 		nil,
-	)
+	).Maybe()
 
 	// program the graph mock
 	ps.graph.On("Final").Return(
@@ -92,27 +97,36 @@ func (ps *ProcessorSuite) SetupTest() {
 			return ps.final
 		},
 		nil,
-	)
+	).Maybe()
 	ps.graph.On("Tip").Return(
 		func() *base.Vertex {
 			return ps.tip
 		},
 		nil,
-	)
+	).Maybe()
+	ps.graph.On("Contains", mock.Anything).Return(
+		func(vertexID base.Hash) bool {
+			return vertexID == ps.staleID
+		},
+		nil,
+	).Maybe()
 
 	// program strategy mock
 	ps.strat.On("Leader", mock.Anything).Return(
 		func(height uint64) base.Hash {
-			return ps.leader
+			return ps.leaderID
 		},
 		nil,
-	)
+	).Maybe()
 	ps.strat.On("Collector", mock.Anything).Return(
 		func(height uint64) base.Hash {
-			return ps.collector
+			return ps.collectorID
 		},
 		nil,
-	)
+	).Maybe()
+
+	// program verify mock
+	ps.verify.On("Proposal", mock.Anything).Return(nil).Maybe()
 
 	// initialize the processor under test
 	ps.pro = NewProcessor(ps.net, ps.graph, ps.build, ps.strat, ps.sign, ps.verify, ps.cache)
@@ -120,9 +134,13 @@ func (ps *ProcessorSuite) SetupTest() {
 
 func (ps *ProcessorSuite) TestBootstrap() {
 
-	// 1) check that we send the correct vote to the correct recipient if we
-	// bootstrap from a tip at height zero
-	ps.tip.Height = 0
+	// make sure bootstrapping fails with non-zero genesis height
+	ps.tip.Height = 1
+	err := ps.pro.Bootstrap()
+	require.Error(ps.T(), err, "should fail bootstrapping with height one")
+	ps.net.AssertNumberOfCalls(ps.T(), "Transmit", 0)
+
+	// make sure we transmit the right vote on successful bootstrap
 	ps.net.On("Transmit", mock.Anything, mock.Anything).Return(nil).Once().Run(
 		func(args mock.Arguments) {
 			vote := args.Get(0).(*message.Vote)
@@ -130,18 +148,115 @@ func (ps *ProcessorSuite) TestBootstrap() {
 			require.Equal(ps.T(), ps.tip.Height, vote.Height, "should send vote for tip height")
 			require.Equal(ps.T(), ps.tip.ID(), vote.CandidateID, "should send vote for tip vertex")
 			require.Equal(ps.T(), ps.self, vote.SignerID, "should send vote by self")
-			require.Equal(ps.T(), ps.collector, collectorID, "should send vote to collector")
+			require.Equal(ps.T(), ps.collectorID, collectorID, "should send vote to collector")
 		},
 	)
-	err := ps.pro.Bootstrap()
-	require.NoError(ps.T(), err, "should bootstrap with height zero")
 
-	// 2) check that we error if we try to bootstrap with a graph that has a tip
-	// higher than height zero
-	ps.tip.Height = 1
+	// make sure valid bootstrap passes
+	ps.tip.Height = 0
 	err = ps.pro.Bootstrap()
-	require.Error(ps.T(), err, "should not bootstrap with height one")
+	require.NoError(ps.T(), err, "should successfully bootstrap with height zero")
+	ps.net.AssertExpectations(ps.T())
 }
 
-func (ps *ProcessorSuite) TestOnProposal() {
+func (ps *ProcessorSuite) TestConfirmParent() {
+
+	// create parent, candidate and proposal
+	parent := fixture.Vertex(ps.T())
+	candidate := fixture.Vertex(ps.T(), fixture.WithParent(parent))
+	proposal := fixture.Proposal(ps.T(), fixture.WithCandidate(candidate))
+
+	// check that the quorum is checked correctly
+	ps.verify.On("Quorum", mock.Anything).Return(nil).Once().Run(
+		func(args mock.Arguments) {
+			verified := args.Get(0).(*message.Proposal)
+			require.Equal(ps.T(), proposal, verified, "should verify proposal quorum")
+		},
+	)
+
+	// make sure the parent is confirmed correctly
+	ps.graph.On("Confirm", mock.Anything).Return(nil).Once().Run(
+		func(args mock.Arguments) {
+			confirmedID := args.Get(0).(base.Hash)
+			require.Equal(ps.T(), parent.ID(), confirmedID, "should confirm proposal parent")
+		},
+	)
+
+	// make sure the cache is cleared up to parent height
+	ps.cache.On("Clear", mock.Anything).Return(nil).Once().Run(
+		func(args mock.Arguments) {
+			cleared := args.Get(0).(uint64)
+			require.Equal(ps.T(), parent.Height, cleared, "should clear up to parent height")
+		},
+	)
+
+	// execute the function
+	err := ps.pro.confirmParent(proposal)
+	require.NoError(ps.T(), err, "should successfully confirm parent")
+	ps.verify.AssertExpectations(ps.T())
+	ps.graph.AssertExpectations(ps.T())
+	ps.cache.AssertExpectations(ps.T())
+}
+
+func (ps *ProcessorSuite) TestApplyCandidate() {
+
+	// create candidate and proposal
+	candidate := fixture.Vertex(ps.T(), fixture.WithProposer(ps.leaderID), fixture.WithParent(ps.tip))
+	proposal := fixture.Proposal(ps.T(), fixture.WithCandidate(candidate))
+
+	// make sure we get a stale error if graph already contains candidate
+	ps.staleID = candidate.ID()
+	err := ps.pro.applyCandidate(proposal)
+	require.Error(ps.T(), err, "should not pass stale candidate")
+	require.True(ps.T(), errors.As(err, &signal.StaleProposal{}), "should have stale proposal error")
+	ps.graph.AssertNumberOfCalls(ps.T(), "Extend", 0)
+	ps.staleID = base.ZeroHash
+
+	// make sure we get an invalid proposer error with wrong proposer
+	tempID := ps.leaderID
+	ps.leaderID = fixture.Hash(ps.T())
+	err = ps.pro.applyCandidate(proposal)
+	require.Error(ps.T(), err, "should not pass with wrong proposer")
+	require.True(ps.T(), errors.As(err, &signal.InvalidProposer{}), "should have invalid proposer error")
+	ps.graph.AssertNumberOfCalls(ps.T(), "Extend", 0)
+	ps.leaderID = tempID
+
+	// make sure that a height at final leads to conflicting error
+	height := candidate.Height
+	candidate.Height = ps.final.Height
+	err = ps.pro.applyCandidate(proposal)
+	require.Error(ps.T(), err, "should not pass conflicting candidate")
+	require.True(ps.T(), errors.As(err, &signal.ConflictingProposal{}), "should have conflicting proposal error")
+	ps.graph.AssertNumberOfCalls(ps.T(), "Extend", 0)
+	candidate.Height = height
+
+	// make sure that a height below tip leads to conflicting error
+	candidate.Height = ps.tip.Height - 1
+	err = ps.pro.applyCandidate(proposal)
+	require.Error(ps.T(), err, "should not pass obsolete candidate")
+	require.True(ps.T(), errors.As(err, &signal.ObsoleteProposal{}), "should have conflicting proposal error")
+	ps.graph.AssertNumberOfCalls(ps.T(), "Extend", 0)
+	candidate.Height = height
+
+	// make sure the graph is extended with the proposal vertex
+	ps.graph.On("Extend", mock.Anything).Return(nil).Once().Run(
+		func(args mock.Arguments) {
+			extended := args.Get(0).(*base.Vertex)
+			require.Equal(ps.T(), candidate, extended, "should extend with proposal candidate")
+		},
+	)
+
+	// make sure the proposal is stored in the cache for double detection
+	ps.cache.On("Proposal", mock.Anything).Return(nil).Once().Run(
+		func(args mock.Arguments) {
+			cached := args.Get(0).(*message.Proposal)
+			require.Equal(ps.T(), proposal, cached, "should cache the applied proposal")
+		},
+	)
+
+	// make sure we pass with valid proposal
+	err = ps.pro.applyCandidate(proposal)
+	require.NoError(ps.T(), err, "should pass valid proposal")
+	ps.graph.AssertExpectations(ps.T())
+	ps.cache.AssertExpectations(ps.T())
 }

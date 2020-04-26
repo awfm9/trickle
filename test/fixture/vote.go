@@ -18,7 +18,7 @@ func Vote(t testing.TB, options ...func(*message.Vote)) *message.Vote {
 	return &vote
 }
 
-func OnCandidate(candidate *base.Vertex) func(*message.Vote) {
+func ForCandidate(candidate *base.Vertex) func(*message.Vote) {
 	return func(vote *message.Vote) {
 		vote.Height = candidate.Height
 		vote.CandidateID = candidate.ID()
