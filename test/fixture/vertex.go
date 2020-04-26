@@ -2,19 +2,18 @@ package fixture
 
 import (
 	"math/rand"
+	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
 )
 
-func Vertex(t require.TestingT, options ...func(*model.Vertex)) *model.Vertex {
+func Vertex(t testing.TB, options ...func(*base.Vertex)) *base.Vertex {
 	height := rand.Uint64()
-	vertex := model.Vertex{
-		Height:   height,
-		Parent:   Reference(t, WithHeight(height-1)),
-		ArcID:    Hash(t),
-		SignerID: Hash(t),
+	vertex := base.Vertex{
+		Height:     height,
+		ParentID:   Hash(t),
+		ProposerID: Hash(t),
+		ArcID:      Hash(t),
 	}
 	for _, option := range options {
 		option(&vertex)
@@ -22,16 +21,15 @@ func Vertex(t require.TestingT, options ...func(*model.Vertex)) *model.Vertex {
 	return &vertex
 }
 
-func WithParent(parent *model.Vertex) func(*model.Vertex) {
-	return func(vertex *model.Vertex) {
-		vertex.Parent.Height = parent.Height
-		vertex.Parent.VertexID = parent.ID()
+func WithParent(parent *base.Vertex) func(*base.Vertex) {
+	return func(vertex *base.Vertex) {
 		vertex.Height = parent.Height + 1
+		vertex.ParentID = parent.ID()
 	}
 }
 
-func WithProposer(proposerID model.Hash) func(*model.Vertex) {
-	return func(vertex *model.Vertex) {
-		vertex.SignerID = proposerID
+func WithProposer(proposerID base.Hash) func(*base.Vertex) {
+	return func(vertex *base.Vertex) {
+		vertex.ProposerID = proposerID
 	}
 }

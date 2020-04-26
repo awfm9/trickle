@@ -1,9 +1,8 @@
 package integration
 
 import (
+	"github.com/alvalor/consensus/model/base"
 	"github.com/rs/zerolog"
-
-	"github.com/alvalor/consensus/model"
 )
 
 type Option func(*Participant)
@@ -14,19 +13,19 @@ func WithLog(log zerolog.Logger) Option {
 	}
 }
 
-func WithSelf(selfID model.Hash) Option {
+func WithSelf(selfID base.Hash) Option {
 	return func(p *Participant) {
 		p.selfID = selfID
 	}
 }
 
-func WithParticipants(participantIDs []model.Hash) Option {
+func WithParticipants(participantIDs []base.Hash) Option {
 	return func(p *Participant) {
 		p.participantIDs = participantIDs
 	}
 }
 
-func WithGenesis(genesisID model.Hash) Option {
+func WithGenesis(genesisID base.Hash) Option {
 	return func(p *Participant) {
 		p.genesisID = genesisID
 	}

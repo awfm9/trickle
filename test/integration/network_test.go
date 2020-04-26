@@ -2,19 +2,19 @@ package integration
 
 import (
 	"fmt"
+	"testing"
 
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 
-	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/mocks"
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
+	"github.com/alvalor/consensus/model/message"
 )
 
-func Network(t require.TestingT, participants ...*Participant) {
+func Network(t testing.TB, participants ...*Participant) {
 
 	// create a list & a registry for participants
-	registry := make(map[model.Hash]*Participant)
+	registry := make(map[base.Hash]*Participant)
 	for _, p := range participants {
 		registry[p.selfID] = p
 	}
@@ -28,27 +28,21 @@ func Network(t require.TestingT, participants ...*Participant) {
 		sender.net.On("Broadcast", mock.Anything).Return(
 			func(proposal *message.Proposal) error {
 				for _, receiver := range participants {
-					if receiver.selfID == sender.selfID {
-						continue
-					}
 					receiver.proposalQ <- proposal
 				}
-				vertexID := proposal.Vertex.ID()
+				candidateID := proposal.Candidate.ID()
 				sender.log.Debug().
-					Uint64("height", proposal.Height).
-					Hex("vertex", vertexID[:]).
-					Hex("parent", proposal.Parent.VertexID[:]).
-					Hex("arc", proposal.ArcID[:]).
-					Hex("proposer", proposal.SignerID[:]).
+					Uint64("height", proposal.Candidate.Height).
+					Hex("candidate", candidateID[:]).
+					Hex("parent", proposal.Candidate.ParentID[:]).
+					Hex("arc", proposal.Candidate.ArcID[:]).
+					Hex("proposer", proposal.Candidate.ProposerID[:]).
 					Msg("proposal broadcasted")
 				return nil
 			},
 		)
 		sender.net.On("Transmit", mock.Anything, mock.Anything).Return(
-			func(vote *message.Vote, recipientID model.Hash) error {
-				if recipientID == sender.selfID {
-					return fmt.Errorf("should not send message to self")
-				}
+			func(vote *message.Vote, recipientID base.Hash) error {
 				receiver, exists := registry[recipientID]
 				if !exists {
 					return fmt.Errorf("invalid recipient (%x)", recipientID)
@@ -56,7 +50,7 @@ func Network(t require.TestingT, participants ...*Participant) {
 				receiver.voteQ <- vote
 				sender.log.Debug().
 					Uint64("height", vote.Height).
-					Hex("vertex", vote.VertexID[:]).
+					Hex("candidate", vote.CandidateID[:]).
 					Hex("voter", vote.SignerID[:]).
 					Msg("vote transmitted")
 				return nil

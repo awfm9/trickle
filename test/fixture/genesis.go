@@ -1,17 +1,17 @@
 package fixture
 
 import (
-	"github.com/stretchr/testify/require"
+	"testing"
 
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
 )
 
-func Genesis(t require.TestingT) *model.Vertex {
-	genesis := model.Vertex{
-		Parent:   nil,
-		Height:   0,
-		ArcID:    model.ZeroHash,
-		SignerID: model.ZeroHash,
+func Genesis(t testing.TB) *base.Vertex {
+	genesis := base.Vertex{
+		Height:     0,
+		ParentID:   base.ZeroHash,
+		ArcID:      base.ZeroHash,
+		ProposerID: base.ZeroHash,
 	}
 	return &genesis
 }

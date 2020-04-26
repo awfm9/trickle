@@ -1,15 +1,15 @@
 package fixture
 
 import (
-	"github.com/stretchr/testify/require"
+	"testing"
 
-	"github.com/alvalor/consensus/message"
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
+	"github.com/alvalor/consensus/model/message"
 )
 
-func Proposal(t require.TestingT, options ...func(*message.Proposal)) *message.Proposal {
+func Proposal(t testing.TB, options ...func(*message.Proposal)) *message.Proposal {
 	proposal := message.Proposal{
-		Vertex:    Vertex(t),
+		Candidate: Vertex(t),
 		Signature: Sig(t),
 	}
 	for _, option := range options {
@@ -18,8 +18,8 @@ func Proposal(t require.TestingT, options ...func(*message.Proposal)) *message.P
 	return &proposal
 }
 
-func WithVertex(vertex *model.Vertex) func(*message.Proposal) {
+func WithCandidate(candidate *base.Vertex) func(*message.Proposal) {
 	return func(proposal *message.Proposal) {
-		proposal.Vertex = vertex
+		proposal.Candidate = candidate
 	}
 }

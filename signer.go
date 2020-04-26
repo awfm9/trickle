@@ -1,12 +1,12 @@
 package consensus
 
 import (
-	"github.com/alvalor/consensus/message"
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
+	"github.com/alvalor/consensus/model/message"
 )
 
 type Signer interface {
-	Self() (model.Hash, error)
-	Proposal(vertex *model.Vertex) (*message.Proposal, error)
-	Vote(vertex *model.Vertex) (*message.Vote, error)
+	Self() (base.Hash, error)
+	Proposal(vertex *base.Vertex) (*message.Proposal, error)
+	Vote(vertex *base.Vertex) (*message.Vote, error)
 }

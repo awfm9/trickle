@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/mocks"
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
+	"github.com/alvalor/consensus/model/message"
 	"github.com/alvalor/consensus/test/fixture"
 )
 
@@ -21,25 +21,24 @@ type ProcessorSuite struct {
 	suite.Suite
 
 	// parameters for signer
-	self model.Hash
+	self base.Hash
 
 	// parameters for graph mock
-	final *model.Vertex
-	tip   *model.Vertex
+	final *base.Vertex
+	tip   *base.Vertex
 
 	// parameters for strategy mock
-	leader    model.Hash
-	collector model.Hash
+	leader    base.Hash
+	collector base.Hash
 
 	// mocked dependencies
-	net       *mocks.Network
-	graph     *mocks.Graph
-	build     *mocks.Builder
-	strat     *mocks.Strategy
-	sign      *mocks.Signer
-	verify    *mocks.Verifier
-	proposals *mocks.ProposalCache
-	votes     *mocks.VoteCache
+	net    *mocks.Network
+	graph  *mocks.Graph
+	build  *mocks.Builder
+	strat  *mocks.Strategy
+	sign   *mocks.Signer
+	verify *mocks.Verifier
+	cache  *mocks.Cache
 
 	// processor under test
 	pro *Processor
@@ -65,23 +64,22 @@ func (ps *ProcessorSuite) SetupTest() {
 	ps.strat = &mocks.Strategy{}
 	ps.sign = &mocks.Signer{}
 	ps.verify = &mocks.Verifier{}
-	ps.proposals = &mocks.ProposalCache{}
-	ps.votes = &mocks.VoteCache{}
+	ps.cache = &mocks.Cache{}
 
 	// program the signer mock
 	ps.sign.On("Self").Return(
-		func() model.Hash {
+		func() base.Hash {
 			return ps.self
 		},
 		nil,
 	)
 	ps.sign.On("Vote", mock.Anything).Return(
-		func(vertex *model.Vertex) *message.Vote {
+		func(candidate *base.Vertex) *message.Vote {
 			vote := message.Vote{
-				Height:    vertex.Height,
-				VertexID:  vertex.ID(),
-				SignerID:  ps.self,
-				Signature: nil,
+				Height:      candidate.Height,
+				CandidateID: candidate.ID(),
+				SignerID:    ps.self,
+				Signature:   nil,
 			}
 			return &vote
 		},
@@ -90,13 +88,13 @@ func (ps *ProcessorSuite) SetupTest() {
 
 	// program the graph mock
 	ps.graph.On("Final").Return(
-		func() *model.Vertex {
+		func() *base.Vertex {
 			return ps.final
 		},
 		nil,
 	)
 	ps.graph.On("Tip").Return(
-		func() *model.Vertex {
+		func() *base.Vertex {
 			return ps.tip
 		},
 		nil,
@@ -104,20 +102,20 @@ func (ps *ProcessorSuite) SetupTest() {
 
 	// program strategy mock
 	ps.strat.On("Leader", mock.Anything).Return(
-		func(height uint64) model.Hash {
+		func(height uint64) base.Hash {
 			return ps.leader
 		},
 		nil,
 	)
 	ps.strat.On("Collector", mock.Anything).Return(
-		func(height uint64) model.Hash {
+		func(height uint64) base.Hash {
 			return ps.collector
 		},
 		nil,
 	)
 
 	// initialize the processor under test
-	ps.pro = NewProcessor(ps.net, ps.graph, ps.build, ps.strat, ps.sign, ps.verify, ps.proposals, ps.votes)
+	ps.pro = NewProcessor(ps.net, ps.graph, ps.build, ps.strat, ps.sign, ps.verify, ps.cache)
 }
 
 func (ps *ProcessorSuite) TestBootstrap() {
@@ -128,9 +126,9 @@ func (ps *ProcessorSuite) TestBootstrap() {
 	ps.net.On("Transmit", mock.Anything, mock.Anything).Return(nil).Once().Run(
 		func(args mock.Arguments) {
 			vote := args.Get(0).(*message.Vote)
-			collectorID := args.Get(1).(model.Hash)
+			collectorID := args.Get(1).(base.Hash)
 			require.Equal(ps.T(), ps.tip.Height, vote.Height, "should send vote for tip height")
-			require.Equal(ps.T(), ps.tip.ID(), vote.VertexID, "should send vote for tip vertex")
+			require.Equal(ps.T(), ps.tip.ID(), vote.CandidateID, "should send vote for tip vertex")
 			require.Equal(ps.T(), ps.self, vote.SignerID, "should send vote by self")
 			require.Equal(ps.T(), ps.collector, collectorID, "should send vote to collector")
 		},
@@ -143,4 +141,7 @@ func (ps *ProcessorSuite) TestBootstrap() {
 	ps.tip.Height = 1
 	err = ps.pro.Bootstrap()
 	require.Error(ps.T(), err, "should not bootstrap with height one")
+}
+
+func (ps *ProcessorSuite) TestOnProposal() {
 }

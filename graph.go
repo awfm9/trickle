@@ -1,13 +1,13 @@
 package consensus
 
 import (
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
 )
 
 type Graph interface {
-	Extend(vertex *model.Vertex) error
-	Confirm(vertexID model.Hash) error
-	Contains(vertexID model.Hash) (bool, error)
-	Tip() (*model.Vertex, error)
-	Final() (*model.Vertex, error)
+	Extend(vertex *base.Vertex) error
+	Confirm(vertexID base.Hash) error
+	Contains(vertexID base.Hash) (bool, error)
+	Tip() (*base.Vertex, error)
+	Final() (*base.Vertex, error)
 }

@@ -1,19 +1,14 @@
 package consensus
 
 import (
-	"github.com/alvalor/consensus/message"
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
+	"github.com/alvalor/consensus/model/message"
 )
 
-// VoteCache stores votes to build proposals.
-type VoteCache interface {
-	Store(vote *message.Vote) (bool, error)
-	Retrieve(height uint64) (model.Hash, []*message.Vote, error)
-	Clear(height uint64) error
-}
-
-// ProposalCache stores competing proposal at a given height.
-type ProposalCache interface {
-	Store(proposal *message.Proposal) (bool, error)
+// Cache stores votes to build proposals.
+type Cache interface {
+	Proposal(proposal *message.Proposal) error
+	Vote(vote *message.Vote) error
+	Quorum(height uint64, vertexID base.Hash) (*message.Quorum, error)
 	Clear(height uint64) error
 }

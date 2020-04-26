@@ -2,31 +2,30 @@ package fixture
 
 import (
 	"math/rand"
+	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	"github.com/alvalor/consensus/message"
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
+	"github.com/alvalor/consensus/model/message"
 )
 
-func Vote(t require.TestingT, options ...func(*message.Vote)) *message.Vote {
+func Vote(t testing.TB, options ...func(*message.Vote)) *message.Vote {
 	vote := message.Vote{
-		Height:    rand.Uint64(),
-		VertexID:  Hash(t),
-		SignerID:  Hash(t),
-		Signature: Sig(t),
+		Height:      rand.Uint64(),
+		CandidateID: Hash(t),
+		SignerID:    Hash(t),
+		Signature:   Sig(t),
 	}
 	return &vote
 }
 
-func WithCandidate(vertex *model.Vertex) func(*message.Vote) {
+func OnCandidate(candidate *base.Vertex) func(*message.Vote) {
 	return func(vote *message.Vote) {
-		vote.Height = vertex.Height
-		vote.VertexID = vertex.ID()
+		vote.Height = candidate.Height
+		vote.CandidateID = candidate.ID()
 	}
 }
 
-func WithVoter(voterID model.Hash) func(*message.Vote) {
+func WithVoter(voterID base.Hash) func(*message.Vote) {
 	return func(vote *message.Vote) {
 		vote.SignerID = voterID
 	}

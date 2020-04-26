@@ -3,34 +3,28 @@ package graph
 import (
 	"fmt"
 
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
 )
 
 // Chain represents a simple blockchain as graph for our consensus algorithm.
 type Chain struct {
-	finalID       model.Hash // holds the highest finalized vertex
-	tipID         model.Hash // holds the best pending vertex
-	vertices      map[model.Hash]*model.Vertex
-	confirmations map[model.Hash]uint
+	finalID       base.Hash // holds the highest finalized vertex
+	tipID         base.Hash // holds the best pending vertex
+	vertices      map[base.Hash]*base.Vertex
+	confirmations map[base.Hash]uint
 }
 
 // NewChain will create a new blockchain as a graph to back our consensus
 // algorithm..
-func NewChain(root *model.Vertex) *Chain {
+func NewChain(root *base.Vertex) *Chain {
 
 	// create second vertex in state to streamline logic
 	rootID := root.ID()
-	ref := model.Reference{
-		Height:    root.Height,
-		VertexID:  rootID,
-		SignerIDs: nil,
-		Signature: nil,
-	}
-	child := model.Vertex{
-		Parent:   &ref,
-		Height:   root.Height + 1,
-		ArcID:    model.ZeroHash,
-		SignerID: model.ZeroHash,
+	child := base.Vertex{
+		Height:     root.Height + 1,
+		ParentID:   rootID,
+		ProposerID: base.ZeroHash,
+		ArcID:      base.ZeroHash,
 	}
 	childID := child.ID()
 
@@ -38,8 +32,8 @@ func NewChain(root *model.Vertex) *Chain {
 	c := Chain{
 		finalID:       rootID,
 		tipID:         childID,
-		vertices:      make(map[model.Hash]*model.Vertex),
-		confirmations: make(map[model.Hash]uint),
+		vertices:      make(map[base.Hash]*base.Vertex),
+		confirmations: make(map[base.Hash]uint),
 	}
 	c.vertices[rootID] = root
 	c.vertices[childID] = &child
@@ -48,13 +42,13 @@ func NewChain(root *model.Vertex) *Chain {
 
 // Extend will try to extend the current state graph with the given vertex and
 // will fail if it would conflict with any part of the finalized state.
-func (c *Chain) Extend(vertex *model.Vertex) error {
+func (c *Chain) Extend(vertex *base.Vertex) error {
 
 	// trace back from the vertex vertex until we:
 	// 1) fail: find a missing link between vertex and finalized state
 	// 2) fail: find a link that does not go through the latest finalized vertex
 	// 3) pass: find a direct link to the latest finalized vertex
-	ancestorID := vertex.Parent.VertexID
+	ancestorID := vertex.ParentID
 	final := c.vertices[c.finalID]
 	for ancestorID != c.finalID {
 		ancestor, found := c.vertices[ancestorID]
@@ -64,7 +58,7 @@ func (c *Chain) Extend(vertex *model.Vertex) error {
 		if ancestor.Height < final.Height {
 			return fmt.Errorf("invalid height for finalization (ancestor: %d, final: %d)", ancestor.Height, final.Height)
 		}
-		ancestorID = ancestor.Parent.VertexID
+		ancestorID = ancestor.ParentID
 	}
 
 	// if we reach here, the vertex is a valid extension of immutable state
@@ -75,7 +69,7 @@ func (c *Chain) Extend(vertex *model.Vertex) error {
 
 // Confirm will add one confirmation to the vertex with the given ID and all of
 // its children until the finalized state is reached.
-func (c *Chain) Confirm(vertexID model.Hash) error {
+func (c *Chain) Confirm(vertexID base.Hash) error {
 
 	// first, check if this vertex is pending
 	vertex, exists := c.vertices[vertexID]
@@ -109,14 +103,14 @@ func (c *Chain) Confirm(vertexID model.Hash) error {
 }
 
 // Contains simply checks if a given vertex is part of the graph.
-func (c *Chain) Contains(vertexID model.Hash) (bool, error) {
+func (c *Chain) Contains(vertexID base.Hash) (bool, error) {
 	_, contains := c.vertices[vertexID]
 	return contains, nil
 }
 
 // Tip returns the highest confirmed vertex, which is our best candidate to
 // extend the state from.
-func (c *Chain) Tip() (*model.Vertex, error) {
+func (c *Chain) Tip() (*base.Vertex, error) {
 	tip, found := c.vertices[c.tipID]
 	if !found {
 		return nil, fmt.Errorf("could not find tip (%x)", c.tipID)
@@ -126,7 +120,7 @@ func (c *Chain) Tip() (*model.Vertex, error) {
 
 // Final returns the highest finalized vertex, which represents the boundary of
 // the finalized state.
-func (c *Chain) Final() (*model.Vertex, error) {
+func (c *Chain) Final() (*base.Vertex, error) {
 	final, found := c.vertices[c.finalID]
 	if !found {
 		return nil, fmt.Errorf("could not find final (%x)", c.finalID)

@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
 	"github.com/alvalor/consensus/test/fixture"
 )
 
@@ -22,7 +22,7 @@ func TestSingularSet(t *testing.T) {
 	log := zerolog.New(os.Stderr)
 	p := NewParticipant(t,
 		WithLog(log),
-		WithGenesis(model.ZeroHash),
+		WithGenesis(base.ZeroHash),
 		WithIgnore(),
 		WithStop(
 			AfterFinal(2048, errFinished),

@@ -1,9 +1,9 @@
 package consensus
 
 import (
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
 )
 
 type Builder interface {
-	Arc() (model.Hash, error)
+	Arc() (base.Hash, error)
 }

@@ -1,10 +1,11 @@
 package consensus
 
 import (
-	"github.com/alvalor/consensus/message"
+	"github.com/alvalor/consensus/model/message"
 )
 
 type Verifier interface {
+	Quorum(quorum *message.Proposal) error
 	Proposal(proposal *message.Proposal) error
 	Vote(vote *message.Vote) error
 }

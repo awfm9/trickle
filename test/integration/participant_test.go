@@ -3,18 +3,18 @@ package integration
 import (
 	"fmt"
 	"io/ioutil"
+	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 
 	"github.com/alvalor/consensus"
 	"github.com/alvalor/consensus/cache"
-	"github.com/alvalor/consensus/errors"
-	"github.com/alvalor/consensus/message"
 	"github.com/alvalor/consensus/mocks"
-	"github.com/alvalor/consensus/model"
+	"github.com/alvalor/consensus/model/base"
+	"github.com/alvalor/consensus/model/message"
+	"github.com/alvalor/consensus/model/signal"
 	"github.com/alvalor/consensus/strategy"
 	"github.com/alvalor/consensus/test/fixture"
 )
@@ -23,25 +23,24 @@ type Participant struct {
 
 	// participant configuration
 	log            zerolog.Logger
-	selfID         model.Hash
-	participantIDs []model.Hash
-	genesisID      model.Hash
+	selfID         base.Hash
+	participantIDs []base.Hash
+	genesisID      base.Hash
 	stop           []Condition
 	ignore         []error
 
 	// state data
-	final         *model.Vertex
-	confirmations map[model.Hash]uint
-	vertexDB      map[model.Hash]*model.Vertex
-	proposalDB    map[model.Hash]*message.Proposal
-	voteCache     map[model.Hash](map[model.Hash]*message.Vote)
+	final         *base.Vertex
+	confirmations map[base.Hash]uint
+	vertexDB      map[base.Hash]*base.Vertex
+	proposalDB    map[base.Hash]*message.Proposal
+	voteCache     map[base.Hash](map[base.Hash]*message.Vote)
 	proposalQ     chan *message.Proposal
 	voteQ         chan *message.Vote
 
 	// real dependencies
-	strat     consensus.Strategy
-	proposals consensus.ProposalCache
-	votes     consensus.VoteCache
+	strat consensus.Strategy
+	cache consensus.Cache
 
 	// dependency mocks
 	net    *mocks.Network
@@ -54,7 +53,7 @@ type Participant struct {
 	pro *consensus.Processor
 }
 
-func NewParticipant(t require.TestingT, options ...Option) *Participant {
+func NewParticipant(t testing.TB, options ...Option) *Participant {
 
 	// configure time function for zerolog
 	zerolog.TimestampFunc = func() time.Time { return time.Now().UTC() }
@@ -65,16 +64,21 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 
 		log:            zerolog.New(ioutil.Discard),
 		selfID:         selfID,
-		participantIDs: []model.Hash{selfID},
-		genesisID:      model.ZeroHash,
+		participantIDs: []base.Hash{selfID},
+		genesisID:      base.ZeroHash,
 		stop:           []Condition{AfterDelay(time.Second, errFinished)},
-		ignore:         []error{errors.ObsoleteProposal{}, errors.ObsoleteVote{}},
+		ignore: []error{
+			signal.StaleProposal{},
+			signal.StaleVote{},
+			signal.ObsoleteProposal{},
+			signal.ObsoleteVote{},
+		},
 
 		final:         nil,
-		confirmations: make(map[model.Hash]uint),
-		vertexDB:      make(map[model.Hash]*model.Vertex),
-		proposalDB:    make(map[model.Hash]*message.Proposal),
-		voteCache:     make(map[model.Hash](map[model.Hash]*message.Vote)),
+		confirmations: make(map[base.Hash]uint),
+		vertexDB:      make(map[base.Hash]*base.Vertex),
+		proposalDB:    make(map[base.Hash]*message.Proposal),
+		voteCache:     make(map[base.Hash](map[base.Hash]*message.Vote)),
 		proposalQ:     make(chan *message.Proposal, 1024),
 		voteQ:         make(chan *message.Vote, 1024),
 
@@ -92,44 +96,29 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 
 	// initialize the real dependencies
 	p.strat = strategy.NewNaive(p.participantIDs)
-	p.proposals = cache.ForProposals()
-	p.votes = cache.ForVotes()
+	p.cache = cache.NewVolatile()
 
 	// program loopback network mock behaviour
 	p.net.On("Broadcast", mock.Anything).Return(
 		func(proposal *message.Proposal) error {
 			p.proposalQ <- proposal
-			vertexID := proposal.Vertex.ID()
+			candidateID := proposal.Candidate.ID()
 			p.log.Debug().
 				Str("message", "proposal").
-				Uint64("height", proposal.Height).
-				Hex("vertex", vertexID[:]).
-				Hex("parent", proposal.Parent.VertexID[:]).
-				Hex("arc", proposal.ArcID[:]).
-				Hex("proposer", proposal.SignerID[:]).
+				Uint64("height", proposal.Candidate.Height).
+				Hex("candidate", candidateID[:]).
+				Hex("parent", proposal.Candidate.ParentID[:]).
+				Hex("arc", proposal.Candidate.ArcID[:]).
+				Hex("proposer", proposal.Candidate.ProposerID[:]).
 				Msg("proposal looped")
 			return nil
 		},
 	)
-	p.net.On("Transmit", mock.Anything, mock.Anything).Return(
-		func(vote *message.Vote, recipientID model.Hash) error {
-			if recipientID != p.selfID {
-				return fmt.Errorf("invalid recipient (%x)", recipientID)
-			}
-			p.voteQ <- vote
-			p.log.Debug().
-				Str("message", "vote").
-				Uint64("height", vote.Height).
-				Hex("vertex", vote.VertexID[:]).
-				Hex("voter", vote.SignerID[:]).
-				Msg("vote looped")
-			return nil
-		},
-	)
+	p.net.On("Transmit", mock.Anything, mock.Anything).Return(nil)
 
 	// program simple graph behaviour
 	p.graph.On("Extend", mock.Anything).Return(
-		func(vertex *model.Vertex) error {
+		func(vertex *base.Vertex) error {
 			if p.final != nil && vertex.Height <= p.final.Height {
 				return fmt.Errorf("vertex conflicts with finalized state")
 			}
@@ -138,7 +127,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		},
 	)
 	p.graph.On("Confirm", mock.Anything).Return(
-		func(vertexID model.Hash) error {
+		func(vertexID base.Hash) error {
 			vertex, hasVertex := p.vertexDB[vertexID]
 			if !hasVertex {
 				return fmt.Errorf("could not find vertex (%x)", vertexID)
@@ -166,7 +155,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		},
 	)
 	p.graph.On("Final").Return(
-		func() *model.Vertex {
+		func() *base.Vertex {
 			return p.final
 		},
 		func() bool {
@@ -176,7 +165,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 
 	// program random builder behaviour
 	p.build.On("Arc").Return(
-		func() model.Hash {
+		func() base.Hash {
 			return fixture.Hash(t)
 		},
 		nil,
@@ -184,16 +173,16 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 
 	// program no-signature signer behaviour
 	p.sign.On("Self").Return(
-		func() model.Hash {
+		func() base.Hash {
 			return p.selfID
 		},
 		nil,
 	)
 	p.sign.On("Proposal", mock.Anything).Return(
-		func(vertex *model.Vertex) *message.Proposal {
-			vertex.SignerID = p.selfID
+		func(candidate *base.Vertex) *message.Proposal {
+			candidate.ProposerID = p.selfID
 			proposal := message.Proposal{
-				Vertex:    vertex,
+				Candidate: candidate,
 				Signature: nil,
 			}
 			return &proposal
@@ -201,12 +190,12 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		nil,
 	)
 	p.sign.On("Vote", mock.Anything).Return(
-		func(vertex *model.Vertex) *message.Vote {
+		func(candidate *base.Vertex) *message.Vote {
 			vote := message.Vote{
-				Height:    vertex.Height,
-				VertexID:  vertex.ID(),
-				SignerID:  p.selfID,
-				Signature: nil,
+				Height:      candidate.Height,
+				CandidateID: candidate.ID(),
+				SignerID:    p.selfID,
+				Signature:   nil,
 			}
 			return &vote
 		},
@@ -218,7 +207,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 	p.verify.On("Vote", mock.Anything).Return(nil)
 
 	// inject dependencies into processor
-	p.pro = consensus.NewProcessor(p.net, p.graph, p.build, p.strat, p.sign, p.verify, p.proposals, p.votes)
+	p.pro = consensus.NewProcessor(p.net, p.graph, p.build, p.strat, p.sign, p.verify, p.cache)
 
 	return &p
 }
@@ -244,19 +233,19 @@ func (p *Participant) Run() error {
 		// wait for a message to process
 		select {
 		case proposal := <-p.proposalQ:
-			vertexID := proposal.Vertex.ID()
+			candidateID := proposal.Candidate.ID()
 			p.log.Debug().
-				Uint64("height", proposal.Height).
-				Hex("vertex", vertexID[:]).
-				Hex("parent", proposal.Parent.VertexID[:]).
-				Hex("arc", proposal.ArcID[:]).
-				Hex("proposer", proposal.SignerID[:]).
+				Uint64("height", proposal.Candidate.Height).
+				Hex("candidate", candidateID[:]).
+				Hex("parent", proposal.Candidate.ParentID[:]).
+				Hex("arc", proposal.Candidate.ArcID[:]).
+				Hex("proposer", proposal.Candidate.ProposerID[:]).
 				Msg("proposal received")
 			err = p.pro.OnProposal(proposal)
 		case vote := <-p.voteQ:
 			p.log.Debug().
 				Uint64("height", vote.Height).
-				Hex("vertex", vote.VertexID[:]).
+				Hex("candidate", vote.CandidateID[:]).
 				Hex("voter", vote.SignerID[:]).
 				Msg("vote received")
 			err = p.pro.OnVote(vote)
