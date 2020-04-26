@@ -28,6 +28,9 @@ func Network(t testing.TB, participants ...*Participant) {
 		sender.net.On("Broadcast", mock.Anything).Return(
 			func(proposal *message.Proposal) error {
 				for _, receiver := range participants {
+					if receiver.selfID == sender.selfID {
+						continue
+					}
 					receiver.proposalQ <- proposal
 				}
 				candidateID := proposal.Candidate.ID()
@@ -43,6 +46,9 @@ func Network(t testing.TB, participants ...*Participant) {
 		)
 		sender.net.On("Transmit", mock.Anything, mock.Anything).Return(
 			func(vote *message.Vote, recipientID base.Hash) error {
+				if recipientID == sender.selfID {
+					return fmt.Errorf("invalid self-transmit")
+				}
 				receiver, exists := registry[recipientID]
 				if !exists {
 					return fmt.Errorf("invalid recipient (%x)", recipientID)

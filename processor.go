@@ -243,6 +243,11 @@ func (pro *Processor) extractVote(proposal *message.Proposal) error {
 		return fmt.Errorf("could not process proposer vote: %w", err)
 	}
 
+	// NOTE: due to the fact that we shortcut the proposer vote here, including
+	// for our own proposals, and seeing how we also shortcut our own proposals
+	// for processing, this will create an infinite recursion if we are always
+	// both the proposer and the collector (such as in single-node networks)
+
 	return nil
 }
 
@@ -410,14 +415,21 @@ func (pro *Processor) proposeCandidate(height uint64, parentID base.Hash) error 
 		ArcID:      arcID,
 	}
 
-	// 3) create and broadcast the proposal
-	// NOTE: broadcast should always loop back to ourselves over the network; if
-	// we would directly process our proposal locally here, we would end in an
-	// infinitely deep call stack
+	// 3) crate & process the proposal locally
 	proposal, err := pro.sign.Proposal(&candidate)
 	if err != nil {
 		return fmt.Errorf("could not create proposal: %w", err)
 	}
+	err = pro.OnProposal(proposal)
+	if err != nil {
+		return fmt.Errorf("could not process own proposal: %w", err)
+	}
+
+	// NOTE: due to the shortcut we take to process our own proposal here, and
+	// the shortcut we take to process the proposer vote, this will create an
+	// infinite recursion if we are always the proposer and the collector
+
+	// 4) broadcast the proposal to the network
 	err = pro.net.Broadcast(proposal)
 	if err != nil {
 		return fmt.Errorf("could not broadcast proposal: %w", err)
