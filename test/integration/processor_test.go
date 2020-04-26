@@ -14,6 +14,8 @@ import (
 	"github.com/alvalor/consensus/test/fixture"
 )
 
+// TODO: fix these after processor changes
+
 func TestSingularSet(t *testing.T) {
 
 	// create a single participant
@@ -23,6 +25,7 @@ func TestSingularSet(t *testing.T) {
 		WithGenesis(model.ZeroHash),
 		WithIgnore(),
 		WithStop(
+			AfterFinal(2048, errFinished),
 			AfterDelay(8*time.Second, errTimeout),
 		),
 	)
@@ -54,6 +57,7 @@ func TestMinimalSet(t *testing.T) {
 			WithSelf(selfID),
 			WithParticipants(participantIDs),
 			WithStop(
+				AfterFinal(1024, errFinished),
 				AfterDelay(8*time.Second, errTimeout),
 			),
 		)
@@ -97,6 +101,7 @@ func TestSmallSet(t *testing.T) {
 			WithSelf(selfID),
 			WithParticipants(participantIDs),
 			WithStop(
+				AfterFinal(256, errFinished),
 				AfterDelay(32*time.Second, errTimeout),
 			),
 		)
@@ -140,6 +145,7 @@ func TestBigSet(t *testing.T) {
 			WithSelf(selfID),
 			WithParticipants(participantIDs),
 			WithStop(
+				AfterFinal(4, errFinished),
 				AfterDelay(8*time.Second, errTimeout),
 			),
 		)

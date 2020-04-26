@@ -25,27 +25,36 @@ func (_m *VoteCache) Clear(height uint64) error {
 	return r0
 }
 
-// Retrieve provides a mock function with given fields: height, vertexID
-func (_m *VoteCache) Retrieve(height uint64, vertexID model.Hash) ([]*message.Vote, error) {
-	ret := _m.Called(height, vertexID)
+// Retrieve provides a mock function with given fields: height
+func (_m *VoteCache) Retrieve(height uint64) (model.Hash, []*message.Vote, error) {
+	ret := _m.Called(height)
 
-	var r0 []*message.Vote
-	if rf, ok := ret.Get(0).(func(uint64, model.Hash) []*message.Vote); ok {
-		r0 = rf(height, vertexID)
+	var r0 model.Hash
+	if rf, ok := ret.Get(0).(func(uint64) model.Hash); ok {
+		r0 = rf(height)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*message.Vote)
+			r0 = ret.Get(0).(model.Hash)
 		}
 	}
 
-	var r1 error
-	if rf, ok := ret.Get(1).(func(uint64, model.Hash) error); ok {
-		r1 = rf(height, vertexID)
+	var r1 []*message.Vote
+	if rf, ok := ret.Get(1).(func(uint64) []*message.Vote); ok {
+		r1 = rf(height)
 	} else {
-		r1 = ret.Error(1)
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).([]*message.Vote)
+		}
 	}
 
-	return r0, r1
+	var r2 error
+	if rf, ok := ret.Get(2).(func(uint64) error); ok {
+		r2 = rf(height)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
 // Store provides a mock function with given fields: vote
