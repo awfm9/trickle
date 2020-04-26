@@ -6,7 +6,7 @@ import (
 
 func Bootstrap(t require.TestingT, participants ...*Participant) {
 	for _, p := range participants {
-		err := p.pro.Bootstrap(p.genesisID)
+		err := p.pro.Bootstrap()
 		require.NoError(t, err, "should be able to bootstrap")
 	}
 }

@@ -8,7 +8,7 @@ import (
 // VoteCache stores votes to build proposals.
 type VoteCache interface {
 	Store(vote *message.Vote) (bool, error)
-	Retrieve(height uint64, vertexID model.Hash) ([]*message.Vote, error)
+	Retrieve(height uint64) (model.Hash, []*message.Vote, error)
 	Clear(height uint64) error
 }
 

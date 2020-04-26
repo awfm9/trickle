@@ -28,6 +28,9 @@ func Network(t require.TestingT, participants ...*Participant) {
 		sender.net.On("Broadcast", mock.Anything).Return(
 			func(proposal *message.Proposal) error {
 				for _, receiver := range participants {
+					if receiver.selfID == sender.selfID {
+						continue
+					}
 					receiver.proposalQ <- proposal
 				}
 				vertexID := proposal.Vertex.ID()
@@ -43,6 +46,9 @@ func Network(t require.TestingT, participants ...*Participant) {
 		)
 		sender.net.On("Transmit", mock.Anything, mock.Anything).Return(
 			func(vote *message.Vote, recipientID model.Hash) error {
+				if recipientID == sender.selfID {
+					return fmt.Errorf("should not send message to self")
+				}
 				receiver, exists := registry[recipientID]
 				if !exists {
 					return fmt.Errorf("invalid recipient (%x)", recipientID)

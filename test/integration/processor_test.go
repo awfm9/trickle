@@ -23,7 +23,6 @@ func TestSingularSet(t *testing.T) {
 		WithGenesis(model.ZeroHash),
 		WithIgnore(),
 		WithStop(
-			AfterRound(2048, errFinished),
 			AfterDelay(8*time.Second, errTimeout),
 		),
 	)
@@ -55,7 +54,6 @@ func TestMinimalSet(t *testing.T) {
 			WithSelf(selfID),
 			WithParticipants(participantIDs),
 			WithStop(
-				AfterRound(1024, errFinished),
 				AfterDelay(8*time.Second, errTimeout),
 			),
 		)
@@ -99,7 +97,6 @@ func TestSmallSet(t *testing.T) {
 			WithSelf(selfID),
 			WithParticipants(participantIDs),
 			WithStop(
-				AfterRound(256, errFinished),
 				AfterDelay(32*time.Second, errTimeout),
 			),
 		)
@@ -143,7 +140,6 @@ func TestBigSet(t *testing.T) {
 			WithSelf(selfID),
 			WithParticipants(participantIDs),
 			WithStop(
-				AfterRound(4, errFinished),
 				AfterDelay(8*time.Second, errTimeout),
 			),
 		)

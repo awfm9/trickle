@@ -17,7 +17,6 @@ type Processor struct {
 	verify    Verifier
 	proposals ProposalCache
 	votes     VoteCache
-	Round     uint64
 }
 
 func NewProcessor(net Network, graph Graph, build Builder, strat Strategy, sign Signer, verify Verifier, proposals ProposalCache, votes VoteCache) *Processor {
@@ -31,49 +30,28 @@ func NewProcessor(net Network, graph Graph, build Builder, strat Strategy, sign 
 		verify:    verify,
 		proposals: proposals,
 		votes:     votes,
-		Round:     0,
 	}
 
 	return &pro
 }
 
-func (pro *Processor) Bootstrap(arcID model.Hash) error {
+func (pro *Processor) Bootstrap() error {
 
-	// check if we are still at zero round
-	if pro.Round != 0 {
-		return fmt.Errorf("graph round not zero")
-	}
-
-	// create root vertex
-	root := model.Vertex{
-		Parent:   nil,
-		Height:   0,
-		ArcID:    arcID,
-		SignerID: model.ZeroHash,
-	}
-
-	// extend the graph with the root
-	err := pro.graph.Extend(&root)
+	// get current tip of the state
+	tip, err := pro.graph.Tip()
 	if err != nil {
-		return fmt.Errorf("could not extend graph with root: %w", err)
+		return fmt.Errorf("could not get tip: %w", err)
 	}
 
-	// create the vote for the proposed vertex
-	vote, err := pro.sign.Vote(&root)
-	if err != nil {
-		return fmt.Errorf("could not create genesis vote: %w", err)
+	// check the tip is at zero
+	if tip.Height != 0 {
+		return fmt.Errorf("invalid bootstrap height (%d)", tip.Height)
 	}
 
-	// get the collector of the genesis round
-	collectorID, err := pro.strat.Collector(root.Height)
+	// vote on the vertex
+	err = pro.voteVertex(tip)
 	if err != nil {
-		return fmt.Errorf("could not get collector: %w", err)
-	}
-
-	// send the vote to the genesis collector
-	err = pro.net.Transmit(vote, collectorID)
-	if err != nil {
-		return fmt.Errorf("could not transmit genesis vote: %w", err)
+		return fmt.Errorf("could not vote on genesis: %w", err)
 	}
 
 	return nil
@@ -81,30 +59,7 @@ func (pro *Processor) Bootstrap(arcID model.Hash) error {
 
 func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 
-	// check if the proposal falls within the finalized state
-	final, exists := pro.graph.Final()
-	if exists && proposal.Height <= final.Height {
-		return errors.ConflictingProposal{Proposal: proposal, Final: final.Height}
-	}
-
-	// get the proposer at the proposal height
-	leaderID, err := pro.strat.Leader(proposal.Height)
-	if err != nil {
-		return fmt.Errorf("could not get proposer: %w", err)
-	}
-
-	// check if the proposal is signed by correct proposer
-	if proposal.SignerID != leaderID {
-		return errors.InvalidProposer{Proposal: proposal, Leader: leaderID}
-	}
-
-	// check if the proposed vertex has valid signature and parent
-	err = pro.verify.Proposal(proposal)
-	if err != nil {
-		return fmt.Errorf("could not verify proposal: %w", err)
-	}
-
-	// check if we already had a proposal by this proposer at this height
+	// 1) check if proposal is already pending
 	fresh, err := pro.proposals.Store(proposal)
 	if err != nil {
 		return fmt.Errorf("could not buffer proposal: %w", err)
@@ -113,85 +68,170 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 		return nil
 	}
 
-	// set the current round if the confirmed height increased
-	if proposal.Height > pro.Round {
-		pro.Round = proposal.Height
+	// 2) check the proposal is consistent within itself
+	err = pro.validateProposal(proposal)
+	if err != nil {
+		return fmt.Errorf("could not validate proposal: %w", err)
 	}
 
-	// NOTE: We currently don't check if we have the parent, which allows us to
-	// skip ahead, even if we don't know the chain up to this point.
-
-	// NOTE: We never check if the parent is on a vertex that is a valid
-	// extension of the state; if it wasn't, the system would already be
-	// compromised. This allows us to skip ahead to the next height regardless
-	// of the validity of the new proposal.
-
-	// confirm the parent of the proposal
-	err = pro.graph.Confirm(proposal.Parent.VertexID)
+	// 3) confirm the referenced parent vertex
+	err = pro.confirmVertex(proposal.Parent)
 	if err != nil {
 		return fmt.Errorf("could not confirm parent: %w", err)
 	}
 
-	// clear the cache for votes up to the confirmed height
-	err = pro.votes.Clear(proposal.Parent.Height)
+	// 4) check the proposal is valid extension of state
+	err = pro.applyVertex(proposal.Vertex)
 	if err != nil {
-		return fmt.Errorf("could not clear vote cache: %w", err)
+		return fmt.Errorf("could not apply proposal: %w", err)
 	}
 
-	// clear the cache for proposals up to the confirmed height
-	err = pro.proposals.Clear(proposal.Parent.Height)
+	// 5) vote on new proposed vertex
+	err = pro.voteVertex(proposal.Vertex)
 	if err != nil {
-		return fmt.Errorf("could not clear proposal cache: %w", err)
+		return fmt.Errorf("could not vote proposal: %w", err)
 	}
 
-	// check if the new proposal is a valid extension of the graph
-	err = pro.graph.Extend(proposal.Vertex)
+	return nil
+}
+
+func (pro *Processor) OnVote(vote *message.Vote) error {
+
+	// 1) check if vote is already pending
+	fresh, err := pro.votes.Store(vote)
 	if err != nil {
-		return fmt.Errorf("could not extend graph: %w", err)
+		return fmt.Errorf("could not buffer vote: %w", err)
+	}
+	if !fresh {
+		return nil
 	}
 
-	// check that the proposal is not already outdated; we don't want to vote
-	// on proposals that are already worse than a pending proposal with majority
-	cutoff := pro.Round
-	if proposal.Height < cutoff {
-		return errors.ObsoleteProposal{Proposal: proposal, Cutoff: cutoff}
+	// 2) validate the vote internally
+	err = pro.validateVote(vote)
+	if err != nil {
+		return fmt.Errorf("could not validate vote: %w", err)
 	}
 
-	// get own ID to compare against collector and leader
+	// 3) try to build proposal
+	err = pro.proposeVertex(vote.Height)
+	if err != nil {
+		return fmt.Errorf("could not build proposal: %w", err)
+	}
+
+	return nil
+}
+
+func (pro *Processor) validateProposal(proposal *message.Proposal) error {
+
+	// 1) check that the proposal was not made by ourselves
 	selfID, err := pro.sign.Self()
 	if err != nil {
 		return fmt.Errorf("could not get self: %w", err)
 	}
-
-	// get the collector for the proposal round
-	collectorID, err := pro.strat.Collector(proposal.Height)
-	if err != nil {
-		return fmt.Errorf("could not get collector: %w", err)
-	}
-
-	// if we are the next collector, we should collect the vote that is included
-	// implicitly in the vertex proposal by the proposal; in order to avoid
-	// creating extra code paths, we send it as message to ourselves
-	if collectorID == selfID {
-		err = pro.net.Transmit(proposal.Vote(), selfID)
-		if err != nil {
-			return fmt.Errorf("could not transmit proposer vote to self: %w", err)
-		}
-	}
-
-	// if we are the current proposer, the vote was already implicitly included
-	// in the proposal, so we don't need to transmit it again
 	if proposal.SignerID == selfID {
+		return fmt.Errorf("validating proposal by self")
+	}
+
+	// 2) check that the proposal is made by the correct leader for the height
+	leaderID, err := pro.strat.Leader(proposal.Height)
+	if err != nil {
+		return fmt.Errorf("could not get proposer: %w", err)
+	}
+	if proposal.SignerID != leaderID {
+		return errors.InvalidProposer{Proposal: proposal, Leader: leaderID}
+	}
+
+	// 3) check that the proposal doesn't conflict with immutable graph state
+	final, err := pro.graph.Final()
+	if err != nil {
+		return fmt.Errorf("could not get final: %w", err)
+	}
+	if proposal.Height <= final.Height {
+		return errors.ConflictingProposal{Proposal: proposal, Final: final.Height}
+	}
+
+	// 4) check that the parent and proposal signatures are correct
+	err = pro.verify.Proposal(proposal)
+	if err != nil {
+		return fmt.Errorf("could not verify proposal: %w", err)
+	}
+
+	return nil
+}
+
+func (pro *Processor) confirmVertex(ref *model.Reference) error {
+
+	// 1) confirm the vertex in the graph
+	err := pro.graph.Confirm(ref.VertexID)
+	if err != nil {
+		return fmt.Errorf("could not confirm parent: %w", err)
+	}
+
+	// 2) clear volatile data no longer needed
+	err = pro.votes.Clear(ref.Height)
+	if err != nil {
+		return fmt.Errorf("could not clear vote cache: %w", err)
+	}
+	err = pro.proposals.Clear(ref.Height)
+	if err != nil {
+		return fmt.Errorf("could not clear proposal cache: %w", err)
+	}
+
+	return nil
+}
+
+func (pro *Processor) applyVertex(vertex *model.Vertex) error {
+
+	// NOTE: We never check whether the parent was a valid extension of the
+	// state; it already has a qualified majority, so if it's not valid, it
+	// means the graph state is already compromised. This assumption allows us
+	// to skip ahead to a proposal height regardless of how many vertices we
+	// are missing in-between.
+
+	// 1) check if the vertex is already obsolete; we should probably not waste
+	// time processing a vertex that is conflicting with another vertex that
+	// already had the confirmation of the majority; it means that no one will
+	// choose this vertex to build on anyway
+	tip, err := pro.graph.Tip()
+	if err != nil {
+		return fmt.Errorf("could not get tip: %w", err)
+	}
+	if vertex.Height < tip.Height {
+		return errors.ObsoleteProposal{Vertex: vertex, Cutoff: tip.Height}
+	}
+
+	// 2) check if the vertex is a valid extension of the graph state and
+	// introduce it into the state if it is
+	err = pro.graph.Extend(vertex)
+	if err != nil {
+		return fmt.Errorf("could not extend graph: %w", err)
+	}
+
+	return nil
+}
+
+func (pro *Processor) voteVertex(vertex *model.Vertex) error {
+
+	// 1) check if we are the proposer and we can skip voting
+	selfID, err := pro.sign.Self()
+	if err != nil {
+		return fmt.Errorf("could not get self: %w", err)
+	}
+	if vertex.SignerID == selfID {
 		return nil
 	}
 
-	// create own vote for the proposed vertex
-	vote, err := pro.sign.Vote(proposal.Vertex)
+	// 2) create our vote for the proposed vertex
+	vote, err := pro.sign.Vote(vertex)
 	if err != nil {
 		return fmt.Errorf("could not create vote: %w", err)
 	}
 
-	// send the vote for the proposed vertex to the next collector
+	// 3) send the vote to the collector for the proposed vertex
+	collectorID, err := pro.strat.Collector(vertex.Height)
+	if err != nil {
+		return fmt.Errorf("could not get collector: %w", err)
+	}
 	err = pro.net.Transmit(vote, collectorID)
 	if err != nil {
 		return fmt.Errorf("could not transmit vote: %w", err)
@@ -200,116 +240,125 @@ func (pro *Processor) OnProposal(proposal *message.Proposal) error {
 	return nil
 }
 
-func (pro *Processor) OnVote(vote *message.Vote) error {
+func (pro *Processor) validateVote(vote *message.Vote) error {
 
-	// check if the vote falls within the finalized state
-	final, exists := pro.graph.Final()
-	if exists && vote.Height <= final.Height {
-		return errors.ConflictingVote{Vote: vote, Final: final.Height}
-	}
-
-	// check if the vote is already outdated; we don't want to build proposals
-	// that, even if they get a majority, are already behind another path
-	cutoff := pro.Round - 1
-	if cutoff > pro.Round {
-		cutoff = pro.Round
-	}
-	if vote.Height < cutoff {
-		return errors.ObsoleteVote{Vote: vote, Cutoff: cutoff}
-	}
-
-	// get own ID to compare against collector
+	// 1) check that vote is not our own
 	selfID, err := pro.sign.Self()
 	if err != nil {
 		return fmt.Errorf("could not get self: %w", err)
 	}
+	if vote.SignerID == selfID {
+		return fmt.Errorf("validating vote by self")
+	}
 
-	// get the collector for the vote
+	// 1) discard votes on vertices already introduced to the graph state
+	contains, err := pro.graph.Contains(vote.VertexID)
+	if err != nil {
+		return fmt.Errorf("could not check graph: %w", err)
+	}
+	if contains {
+		return errors.StaleVote{Vote: vote}
+	}
+
+	// 2) discard votes on vertices conflicting with immutable graph state
+	final, err := pro.graph.Final()
+	if err != nil {
+		return fmt.Errorf("could not get final: %w", err)
+	}
+	if vote.Height <= final.Height {
+		return errors.ConflictingVote{Vote: vote, Final: final.Height}
+	}
+
+	// 3) discard votes building a proposal that is already behind; we don't
+	// want to waste time building a proposal that is below the height of a
+	// proposal everyone has already seen and confirmed once
+	tip, err := pro.graph.Tip()
+	if err != nil {
+		return fmt.Errorf("could not get tip: %w", err)
+	}
+	if vote.Height < tip.Height {
+		return errors.ObsoleteVote{Vote: vote, Cutoff: tip.Height}
+	}
+
+	// 4) check if we are the collector for the given vote
 	collectorID, err := pro.strat.Collector(vote.Height)
 	if err != nil {
 		return fmt.Errorf("could not get vote collector: %w", err)
 	}
-
-	// check if we are the collector for the round
 	if collectorID != selfID {
 		return errors.InvalidCollector{Vote: vote, Collector: collectorID, Receiver: selfID}
 	}
 
-	// check if the vote has a valid signature
+	// 5) check the signature on the vote
 	err = pro.verify.Vote(vote)
 	if err != nil {
 		return fmt.Errorf("could not verify vote signature: %w", err)
 	}
 
-	// check if we already have a vote by this voter
-	fresh, err := pro.votes.Store(vote)
-	if err != nil {
-		return fmt.Errorf("could not tally vote: %w)", err)
-	}
-	if !fresh {
-		return nil
-	}
+	return nil
+}
 
-	// get the threshold (for all rounds currently)
-	threshold, err := pro.strat.Threshold(vote.Height)
+func (pro *Processor) proposeVertex(height uint64) error {
+
+	// 1) check if we have enough votes at the given height
+	threshold, err := pro.strat.Threshold(height)
 	if err != nil {
 		return fmt.Errorf("could not get threshold: %w", err)
 	}
-
-	// get the votes for the given vertex
-	votes, err := pro.votes.Retrieve(vote.Height, vote.VertexID)
+	vertexID, votes, err := pro.votes.Retrieve(height)
 	if err != nil {
 		return fmt.Errorf("could not get votes: %w", err)
 	}
-
-	// check if we have reached the threshold
 	if uint(len(votes)) <= threshold {
 		return nil
 	}
 
-	// collect vote signers and signatures
+	// NOTE: this can create a parent with a vertex we have not even seen yet;
+	// however, with the majority voting for it, we should be able to rely on it
+
+	// 2) create and confirm parent reference for the proposed vertex
 	var signature []byte
 	signerIDs := make([]model.Hash, 0, len(votes))
 	for _, vote := range votes {
 		signerIDs = append(signerIDs, vote.SignerID)
 		signature = append(signature, vote.Signature...)
 	}
+	parent := model.Reference{
+		Height:    height - 1,
+		VertexID:  vertexID,
+		SignerIDs: signerIDs,
+		Signature: signature,
+	}
+	err = pro.confirmVertex(&parent)
+	if err != nil {
+		return fmt.Errorf("could not confirm parent: %w", err)
+	}
 
-	// get a random arc from the builder
+	// 3) create and process the proposed vertex
+	selfID, err := pro.sign.Self()
+	if err != nil {
+		return fmt.Errorf("could not get self: %w", err)
+	}
 	arcID, err := pro.build.Arc()
 	if err != nil {
 		return fmt.Errorf("could not build arc: %w", err)
 	}
-
-	// NOTE: this can create a parent with a vertex have not even seen yet;
-	// however, with the majority voting for it, we should be able to rely on it
-
-	// create the Parent for the new proposal
-	parent := model.Reference{
-		VertexID:  vote.VertexID,
-		SignerIDs: signerIDs,
-		Signature: signature,
-	}
-
-	// create the vertex for the new proposal
 	vertex := model.Vertex{
-		Height: vote.Height + 1,
-		Parent: &parent,
-		ArcID:  arcID,
+		Parent:   &parent,
+		Height:   height,
+		ArcID:    arcID,
+		SignerID: selfID,
+	}
+	err = pro.applyVertex(&vertex)
+	if err != nil {
+		return fmt.Errorf("could not apply vertex: %w", err)
 	}
 
-	// create the new proposal
+	// 4) sign and broadcast the proposed vertex
 	proposal, err := pro.sign.Proposal(&vertex)
 	if err != nil {
 		return fmt.Errorf("could not create proposal: %w", err)
 	}
-
-	// we trust our proposal, so we set the new round redundantly here
-	pro.Round = proposal.Height
-
-	// broadcast the proposal to the network
-	// NOTE: the network module should short-circuit one copy of this messae to
-	// ourselves, which will lead to the state transition to the next height
 	err = pro.net.Broadcast(proposal)
 	if err != nil {
 		return fmt.Errorf("could not broadcast proposal: %w", err)

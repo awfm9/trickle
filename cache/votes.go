@@ -53,24 +53,31 @@ func (vc *Votes) Store(vote *message.Vote) (bool, error) {
 }
 
 // Retrieve gets the votes at a given height for a given vertex.
-func (vc *Votes) Retrieve(height uint64, vertexID model.Hash) ([]*message.Vote, error) {
+func (vc *Votes) Retrieve(height uint64) (model.Hash, []*message.Vote, error) {
 
 	// get the votes registered for this height
 	voteLookup, exists := vc.voteLookups[height]
 	if !exists {
-		return nil, fmt.Errorf("height unknown (%x)", height)
+		return model.ZeroHash, nil, fmt.Errorf("height unknown (%x)", height)
 	}
 
 	// add the votes that have the desired vertex ID to a slice
-	votes := make([]*message.Vote, 0, len(voteLookup))
+	byVertex := make(map[model.Hash][]*message.Vote)
 	for _, vote := range voteLookup {
-		if vote.VertexID != vertexID {
-			continue
-		}
-		votes = append(votes, vote)
+		byVertex[vote.VertexID] = append(byVertex[vote.VertexID], vote)
 	}
 
-	return votes, nil
+	// find the vertex with most votes
+	max := 0
+	bestID := model.ZeroHash
+	for vertexID, votes := range byVertex {
+		if len(votes) > max {
+			bestID = vertexID
+			max = len(votes)
+		}
+	}
+
+	return bestID, byVertex[bestID], nil
 }
 
 // Clear will drop all votes at or below the given cutoff, regardless of vertex.

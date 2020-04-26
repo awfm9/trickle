@@ -67,7 +67,7 @@ func NewParticipant(t require.TestingT, options ...Option) *Participant {
 		selfID:         selfID,
 		participantIDs: []model.Hash{selfID},
 		genesisID:      model.ZeroHash,
-		stop:           []Condition{AfterRound(10, errFinished)},
+		stop:           []Condition{AfterDelay(time.Second, errFinished)},
 		ignore:         []error{errors.ObsoleteProposal{}, errors.ObsoleteVote{}},
 
 		final:         nil,
