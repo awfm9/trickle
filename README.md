@@ -1,6 +1,6 @@
 # Simple BFT Consensus
 
-[![godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/awfm/consensus) [![license](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/awfm/consensus/master/LICENSE) [![Build Status](https://travis-ci.org/awfm/consensus.svg?branch=master)](https://travis-ci.org/awfm/consensus)
+[![godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/awfm/consensus) [![license](http://img.shields.io/badge/license-AGPLv3-blue.svg?style=flat)](https://raw.githubusercontent.com/awfm/consensus/master/LICENSE) [![Build Status](https://travis-ci.org/awfm/consensus.svg?branch=master)](https://travis-ci.org/awfm/consensus)
 
 The consensus package provides a simple event-driven and stateless harness for BFT consensus algorithms.
 
