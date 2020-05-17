@@ -1,7 +1,7 @@
 package consensus
 
 import (
-	"github.com/alvalor/consensus/model/message"
+	"github.com/awfm/consensus/model/message"
 )
 
 type Verifier interface {

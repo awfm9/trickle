@@ -3,8 +3,8 @@ package signal
 import (
 	"fmt"
 
-	"github.com/alvalor/consensus/model/base"
-	"github.com/alvalor/consensus/model/message"
+	"github.com/awfm/consensus/model/base"
+	"github.com/awfm/consensus/model/message"
 )
 
 // StaleProposal is an error returned when skipping processing of a proposal

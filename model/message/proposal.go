@@ -1,7 +1,7 @@
 package message
 
 import (
-	"github.com/alvalor/consensus/model/base"
+	"github.com/awfm/consensus/model/base"
 )
 
 // Proposal is a proposal for a new vertex in the consensus graph. It contains

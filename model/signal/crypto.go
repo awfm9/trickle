@@ -3,7 +3,7 @@ package signal
 import (
 	"fmt"
 
-	"github.com/alvalor/consensus/model/base"
+	"github.com/awfm/consensus/model/base"
 )
 
 // InvalidSignature is an error that is returned when a cryptographically

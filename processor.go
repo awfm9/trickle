@@ -3,9 +3,9 @@ package consensus
 import (
 	"fmt"
 
-	"github.com/alvalor/consensus/model/base"
-	"github.com/alvalor/consensus/model/message"
-	"github.com/alvalor/consensus/model/signal"
+	"github.com/awfm/consensus/model/base"
+	"github.com/awfm/consensus/model/message"
+	"github.com/awfm/consensus/model/signal"
 )
 
 type Processor struct {

@@ -3,7 +3,7 @@ package fixture
 import (
 	"testing"
 
-	"github.com/alvalor/consensus/model/message"
+	"github.com/awfm/consensus/model/message"
 )
 
 func Quorum(t testing.TB) *message.Quorum {

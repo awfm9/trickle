@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/sha3"
 
-	"github.com/alvalor/consensus/model/base"
+	"github.com/awfm/consensus/model/base"
 )
 
 func Hash(t testing.TB) base.Hash {

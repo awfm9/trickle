@@ -1,7 +1,7 @@
 package consensus
 
 import (
-	"github.com/alvalor/consensus/model/base"
+	"github.com/awfm/consensus/model/base"
 )
 
 type Builder interface {

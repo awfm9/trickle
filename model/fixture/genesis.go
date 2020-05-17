@@ -3,7 +3,7 @@ package fixture
 import (
 	"testing"
 
-	"github.com/alvalor/consensus/model/base"
+	"github.com/awfm/consensus/model/base"
 )
 
 func Genesis(t testing.TB) *base.Vertex {

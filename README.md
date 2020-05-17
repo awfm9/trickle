@@ -1,10 +1,8 @@
-# Alvalor Consensus
+# Simple BFT Consensus
 
-[![Build Status](https://travis-ci.com/alvalor/consensus.svg?token=Hm9YEiz4aAfKiFLFh2sr&branch=master)](https://travis-ci.com/alvalor/consensus)
+[![godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/awfm/consensus) [![license](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/awfm/consensus/master/LICENSE) [![Build Status](https://travis-ci.org/awfm/consensus.svg?branch=master)](https://travis-ci.org/awfm/consensus)
 
-## Description
-
-Alvalor consensus implements a byzantine fault-tolerant (BFT) consensus algorithm, based on HotStuff.
+The consensus package provides a simple event-driven and stateless harness for BFT consensus algorithms.
 
 ## Roadmap
 

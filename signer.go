@@ -1,8 +1,8 @@
 package consensus
 
 import (
-	"github.com/alvalor/consensus/model/base"
-	"github.com/alvalor/consensus/model/message"
+	"github.com/awfm/consensus/model/base"
+	"github.com/awfm/consensus/model/message"
 )
 
 type Signer interface {

@@ -1,7 +1,7 @@
 package consensus
 
 import (
-	"github.com/alvalor/consensus/model/message"
+	"github.com/awfm/consensus/model/message"
 )
 
 // Looper is used to loop back messages to ourselves, with priority, thus

@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"testing"
 
-	"github.com/alvalor/consensus/model/base"
+	"github.com/awfm/consensus/model/base"
 
 	"github.com/stretchr/testify/require"
 )

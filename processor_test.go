@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/alvalor/consensus/mocks"
-	"github.com/alvalor/consensus/model/base"
-	"github.com/alvalor/consensus/model/message"
-	"github.com/alvalor/consensus/model/signal"
-	"github.com/alvalor/consensus/test/fixture"
+	"github.com/awfm/consensus/mocks"
+	"github.com/awfm/consensus/model/base"
+	"github.com/awfm/consensus/model/fixture"
+	"github.com/awfm/consensus/model/message"
+	"github.com/awfm/consensus/model/signal"
 )
 
 func TestProcessor(t *testing.T) {

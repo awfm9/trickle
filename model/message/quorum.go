@@ -1,7 +1,7 @@
 package message
 
 import (
-	"github.com/alvalor/consensus/model/base"
+	"github.com/awfm/consensus/model/base"
 )
 
 // Quorum is a collection of signers and their combined signatures.
